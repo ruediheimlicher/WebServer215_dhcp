@@ -32,5 +32,8 @@
 
 static char* teststring = "pw=Pong&strom0=360\0";
 
+// listen port for tcp/www:
+#define MYWWWPORT 80
+
 
 #endif /* defines_h */

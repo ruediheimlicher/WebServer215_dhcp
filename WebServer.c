@@ -63,9 +63,14 @@ static uint8_t mymac[6] = {0x54,0x55,0x58,0x10,0x00,0x29};
 //#define WEBSERVER_VHOST "tuxgraphics.org"
 static uint8_t otherside_www_ip[4];
 // My own IP (DHCP will provide a value for it):
-static uint8_t myip[4]={0,0,0,0};
+// DHCP
+//static uint8_t myip[4]={0,0,0,0};
 // Default gateway (DHCP will provide a value for it):
-static uint8_t gwip[4]={0,0,0,0};
+//static uint8_t gwip[4]={0,0,0,0};
+
+static uint8_t myip[4] = {192,168,1,209};
+static uint8_t gwip[4] = {192,168,1,1};
+
 #define TRANS_NUM_GWMAC 1
 static uint8_t gwmac[6];
 // Netmask (DHCP will provide a value for it):
@@ -76,8 +81,17 @@ static volatile uint8_t gsec=0; // counts up beyond 6 sec
 
 static uint8_t buf[BUFFER_SIZE+1];
 static uint8_t start_web_client=0;
+static uint8_t pingsrcip[4];
 static uint8_t web_client_attempts=0;
+static uint8_t web_client_sendok=0;
+static volatile uint8_t cnt2step=0;
 static int8_t dns_state=0;
+static int8_t gw_arp_state=0;
+
+static volatile uint8_t ping_callback_count=0;
+static volatile uint8_t browser_callback_count=0;
+
+
 
 static  char* uploadadresse[64];
 
@@ -119,25 +133,206 @@ void timer_init(void)
 
 
 
+
+
+
+
+// von test_www_client
+uint16_t http200ok(void)
+{
+   return(fill_tcp_data_p(buf,0,PSTR("HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nPragma: no-cache\r\n\r\n")));
+}
+
+
+// prepare the webpage by writing the data to the tcp send buffer
+uint16_t print_webpage(uint8_t *buf)
+{
+   uint16_t plen;
+   char vstr[17];
+   uint8_t err;
+   plen=http200ok();
+   plen=fill_tcp_data_p(buf,plen,PSTR("<h2>web client status home</h2>\n<pre>\n"));
+   if (gw_arp_state==1){
+      plen=fill_tcp_data_p(buf,plen,PSTR("waiting for GW "));
+      mk_net_str(vstr,gwip,4,'.',10);
+      plen=fill_tcp_data(buf,plen,vstr);
+      plen=fill_tcp_data_p(buf,plen,PSTR(" to answer arp.\n"));
+      return(plen);
+   }
+   if (dns_state==1){
+      plen=fill_tcp_data_p(buf,plen,PSTR("waiting for DNS answer.\n"));
+      err=dnslkup_get_error_info();
+      plen=fill_tcp_data_p(buf,plen,PSTR("Error code: "));
+      itoa(err,vstr,10);
+      plen=fill_tcp_data(buf,plen,vstr);
+      plen=fill_tcp_data_p(buf,plen,PSTR(" (0=no error)\n"));
+      return(plen);
+   }
+   plen=fill_tcp_data_p(buf,plen,PSTR("Home: Number of data uploads started by ping: web_client_attempts: "));
+   // convert number to string:
+   itoa(web_client_attempts,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   
+   plen=fill_tcp_data_p(buf,plen,PSTR("\nNumber successful data uploads to web: web_client_sendok: "));
+   // convert number to string:
+   itoa(web_client_sendok,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   
+   
+   //otherside_www_ip
+   plen=fill_tcp_data_p(buf,plen,PSTR("\notherside_www_ip:\n "));
+   
+   // convert el 0 to string:
+   itoa(otherside_www_ip[0],vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
+   // convert el 1 to string:
+   itoa(otherside_www_ip[1],vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
+   // convert el 2 to string:
+   itoa(otherside_www_ip[2],vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
+   // convert el 3 to string:
+   itoa(otherside_www_ip[3],vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   
+   //pingsrcip:
+   plen=fill_tcp_data_p(buf,plen,PSTR("\npingsrcip:\n "));
+   
+   // convert el 0 to string:
+   itoa(pingsrcip[0],vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
+   // convert el 1 to string:
+   itoa(pingsrcip[1],vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
+   // convert el 2 to string:
+   itoa(pingsrcip[2],vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
+   // convert el 3 to string:
+   itoa(pingsrcip[3],vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   
+   // sec:
+   plen=fill_tcp_data_p(buf,plen,PSTR("\nsec:\t "));
+   
+   // convert el 0 to string:
+   itoa(sec,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
+   
+   // web_client_sendok
+   plen=fill_tcp_data_p(buf,plen,PSTR("\nweb_client_sendok:\t "));
+   
+   // convert web_client_sendok to string:
+   itoa(web_client_sendok,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
+   
+   
+   //ping_callback_count
+   plen=fill_tcp_data_p(buf,plen,PSTR("\nping_callback_count:\t "));
+   
+   itoa(ping_callback_count,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
+   
+   plen=fill_tcp_data_p(buf,plen,PSTR("\nbrowser_callback_count:\t "));
+   itoa(browser_callback_count,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\t*"));
+   
+   plen=fill_tcp_data_p(buf,plen,(char*)WEBSERVER_VHOST);
+   plen=fill_tcp_data_p(buf,plen,PSTR("*"));
+   
+   // gw_arp_state
+   plen=fill_tcp_data_p(buf,plen,PSTR("\ngw_arp_state:\t "));
+   itoa(gw_arp_state,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   // dns_state
+   plen=fill_tcp_data_p(buf,plen,PSTR("\tdns_state:\t "));
+   itoa(dns_state,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   // start_web_client
+   plen=fill_tcp_data_p(buf,plen,PSTR("\tstart_web_client:\t "));
+   itoa(start_web_client,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+   
+   
+   // plen=fill_tcp_data_p(buf,plen,PSTR("\ncheck result: <a href=http://tuxgraphics.org/cgi-bin/upld>http://tuxgraphics.org/cgi-bin/upld</a>"));
+   plen=fill_tcp_data_p(buf,plen,PSTR("\n</pre><br><hr>"));
+   return(plen);
+}
+
+/* setup timer T2 as an interrupt generating time base.
+ * You must call once sei() in the main program */
+void init_cnt2(void)
+{
+   cnt2step=0;
+   PRR&=~(1<<PRTIM2); // write power reduction register to zero
+   TIMSK2=(1<<OCIE2A); // compare match on OCR2A
+   TCNT2=0;  // init counter
+   OCR2A=244; // value to compare against
+   TCCR2A=(1<<WGM21); // do not change any output pin, clear at compare match
+   // divide clock by 1024: 12.5MHz/128=12207 Hz
+   TCCR2B=(1<<CS22)|(1<<CS21)|(1<<CS20); // clock divider, start counter
+   // 12207/244=50Hz
+}
+
+// called when TCNT2==OCR2A
+// that is in 50Hz intervals
+ISR(TIMER2_COMPA_vect)
+{
+   cnt2step++;
+   if (cnt2step>50){
+      cnt2step=0;
+      sec++; // stepped every second
+   }
+}
 // we were ping-ed by somebody, store the ip of the ping sender
 // and trigger an upload to http://tuxgraphics.org/cgi-bin/upld
 // This is just for testing and demonstration purpose
-//
-// the __attribute__((unused)) is a gcc compiler directive to avoid warnings about unsed variables.
-void browserresult_callback(uint8_t webstatuscode,uint16_t datapos __attribute__((unused)), uint16_t len __attribute__((unused))){
-        if (webstatuscode==2){
-                LEDOFF;
-        }
+void ping_callback(uint8_t *ip)
+{
+   uint8_t i=0;
+   ping_callback_count++;
+   // trigger only first time in case we get many ping in a row:
+   if (start_web_client==0)
+   {
+      start_web_client=1;
+      // save IP from where the ping came:
+      while(i<4){
+         pingsrcip[i]=ip[i];
+         i++;
+      }
+   }
 }
 
 // the __attribute__((unused)) is a gcc compiler directive to avoid warnings about unsed variables.
-void arpresolver_result_callback(uint8_t *ip __attribute__((unused)),uint8_t reference_number,uint8_t *mac){
-        uint8_t i=0;
-        if (reference_number==TRANS_NUM_GWMAC){
-                // copy mac address over:
-                while(i<6){gwmac[i]=mac[i];i++;}
-        }
+void browserresult_callback(uint16_t webstatuscode,uint16_t datapos __attribute__((unused)), uint16_t len __attribute__((unused)))
+{
+   browser_callback_count++;
+   if (webstatuscode==200)
+   {
+      web_client_sendok++;
+      LEDOFF;
+   }
 }
+
+// the __attribute__((unused)) is a gcc compiler directive to avoid warnings about unsed variables.
+void arpresolver_result_callback(uint8_t *ip __attribute__((unused)),uint8_t transaction_number,uint8_t *mac){
+   uint8_t i=0;
+   if (transaction_number==TRANS_NUM_GWMAC){
+      // copy mac address over:
+      while(i<6){gwmac[i]=mac[i];i++;}
+   }
+}
+
+// end von test_www_client
 
 int main(void)
 {
@@ -169,6 +364,9 @@ int main(void)
    _delay_loop_1(0); // 60us
    
    timer_init();
+   // von eth
+   init_cnt2();
+   
    sei();
    
    /* Magjack leds configuration, see enc28j60 datasheet, page 11 */
@@ -184,6 +382,7 @@ int main(void)
    
    
    LEDON;
+   /*
    // DHCP handling. Get the initial IP
    rval=0;
    init_mac(mymac);
@@ -214,14 +413,30 @@ int main(void)
       packetloop_arp_icmp_tcp(buf,plen);
    }
    LEDOFF;
-   
-   
+    */
+   //init the web server ethernet/ip layer:
+   init_udp_or_www_server(mymac,myip);
+   www_server_port(MYWWWPORT);
+
+   // register to be informed about incomming ping:
+   register_ping_rec_callback(&ping_callback);
+
    // ***** eigene Declarations ***********
    lcdinit();
    lcd_puts("Guten Tag \0");
    lcd_gotoxy(10,0);
    lcd_puts("V:\0");
    lcd_puts(VERSION);
+   lcd_gotoxy(0,2);
+   lcd_putint(myip[0]);
+   lcd_putc('.');
+   lcd_putint(myip[1]);
+   lcd_putc('.');
+   lcd_putint(myip[2]);
+   lcd_putc('.');
+   lcd_putint(myip[3]);
+ 
+   
    /*
     char versionnummer[7];
     strcpy(versionnummer,&VERSION[13]);
@@ -233,70 +448,104 @@ int main(void)
   
    // ***** end eigene Declarations ***********
    
-   while(1){
+   while(1)
+   {
+      // handle ping and wait for a tcp packet
       plen=enc28j60PacketReceive(BUFFER_SIZE, buf);
-      buf[BUFFER_SIZE]='\0'; // http is an ascii protocol. Make sure we have a string terminator.
-      // DHCP renew IP:
-      plen=packetloop_dhcp_renewhandler(buf,plen); // for this to work you have to call dhcp_6sec_tick() every 6 sec
       dat_p=packetloop_arp_icmp_tcp(buf,plen);
-      if(plen==0){
-         // we are idle here
-         if (dns_state==0){
+      if(plen==0)
+      {
+         // we are idle here trigger arp and dns stuff here
+         if (gw_arp_state==0)
+         {
+            // find the mac address of the gateway (e.g your dsl router).
+            get_mac_with_arp(gwip,TRANS_NUM_GWMAC,&arpresolver_result_callback);
+            gw_arp_state=1;
+         }
+         if (get_mac_with_arp_wait()==0 && gw_arp_state==1)
+         {
+            // done we have the mac address of the GW
+            gw_arp_state=2;
+         }
+         if (dns_state==0 && gw_arp_state==2){
             if (!enc28j60linkup()) continue; // only for dnslkup_request we have to check if the link is up.
-            gsec=0;
+            sec=0;
             dns_state=1;
             dnslkup_request(buf,WEBSERVER_VHOST,gwmac);
-            LEDON;
             continue;
          }
          if (dns_state==1 && dnslkup_haveanswer()){
             dns_state=2;
             dnslkup_get_ip(otherside_www_ip);
-            LEDOFF;
          }
-         if (dns_state!=2){
+         if (dns_state!=2)
+         {
             // retry every minute if dns-lookup failed:
-            if (gsec > 60){
+            if (sec > 10)
+            {
                dns_state=0;
             }
             // don't try to use web client before
             // we have a result of dns-lookup
             continue;
          }
+         
          //----------
          if (start_web_client==1)
          {
             LEDON;
-            gsec=0;
+            sec=0;
             start_web_client=2;
             web_client_attempts++;
-            mk_net_str(str,myip,4,'.',10);
+            mk_net_str(str,pingsrcip,4,'.',10);
             urlencode(str,urlvarstr);
             
+            strcpy((char*)uploadadresse,WEBSERVER_VHOST);
+            strcat((char*)uploadadresse,"/cgi-bin/hello.pl");
+            strcat((char*)uploadadresse,urlvarstr);
             
+            //PSTR("/cgi-bin/hello.pl"),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac;
+            //client_browse_url(PSTR("/cgi-bin/upld?pw=sec&pingIP="),urlvarstr,PSTR(TUX_WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+            client_browse_url(PSTR("/cgi-bin/hello.pl?data="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
             
-             client_browse_url(PSTR("/cgi-bin/hello.pl?data="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
-             /*
-            client_browse_url(PSTR("/cgi-bin/upld?pw=sec&action=btn&ethbrd_ip="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
-              */
          }
          // reset after a delay to prevent permanent bouncing
-         if (gsec>8 && start_web_client==2){
+         if (sec>30 && start_web_client==2)
+         {
             start_web_client=0;
-         }
-         if (bit_is_clear(PIND,PIND6)){ // button press
-            if (start_web_client==0) start_web_client=1;
+            sec=0;
          }
          continue;
       }
-      if(dat_p==0){ // plen!=0
+      if(dat_p==0)
+      { // plen!=0
          // check for incomming messages not processed
          // as part of packetloop_arp_icmp_tcp, e.g udp messages
          udp_client_check_for_dns_answer(buf,plen);
          continue;
       }
-      // when dat_p!=0 then we get normally a http
-      // request but this is not a web server so we do nothing.
+      
+      if (strncmp("GET ",(char *)&(buf[dat_p]),4)!=0){
+         // head, post and other methods:
+         //
+         // for possible status codes see:
+         // http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
+         dat_p=http200ok();
+         dat_p=fill_tcp_data_p(buf,dat_p,PSTR("<h1>200 OK</h1>"));
+         goto SENDTCP;
+      }
+      if (strncmp("/ ",(char *)&(buf[dat_p+4]),2)==0){
+         dat_p=http200ok();
+         dat_p=print_webpage(buf);
+         goto SENDTCP;
+      }else{
+         dat_p=fill_tcp_data_p(buf,0,PSTR("HTTP/1.0 401 Unauthorized\r\nContent-Type: text/html\r\n\r\n<h1>401 Unauthorized</h1>"));
+         goto SENDTCP;
+      }
+      //
+   SENDTCP:
+      www_server_reply(buf,dat_p); // send data
+      
    }
    return (0);
 }

@@ -20,7 +20,7 @@
 // a server answering to UDP messages
 #undef UDP_server
 // a web server
-#undef WWW_server
+#define WWW_server
 //
 // define this if you want to use enc28j60EnableBroadcast/enc28j60DisableBroadcast
 // the dhcp_client.c needs this.

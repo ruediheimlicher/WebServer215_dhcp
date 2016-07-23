@@ -9,5 +9,5 @@
 #ifndef helpers_h
 #define helpers_h
 
-void lcdinit();
+void lcdinit(void);
 #endif /* helpers_h */
