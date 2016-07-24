@@ -49,6 +49,7 @@
 #include "helpers.c"
 #include "datum.c"
 #include "version.c"
+#include "webpage.c"
 
 //
 // Please modify the following lines. mac and ip have to be unique
@@ -491,7 +492,7 @@ int main(void)
          }
          
          //----------
-         if (start_web_client==1)
+         if (start_web_client==1) // in ping-callback gesetzt
          {
             LEDON;
             sec=0;
@@ -538,7 +539,9 @@ int main(void)
          dat_p=http200ok();
          dat_p=print_webpage(buf);
          goto SENDTCP;
-      }else{
+      }
+      else
+      {
          dat_p=fill_tcp_data_p(buf,0,PSTR("HTTP/1.0 401 Unauthorized\r\nContent-Type: text/html\r\n\r\n<h1>401 Unauthorized</h1>"));
          goto SENDTCP;
       }
