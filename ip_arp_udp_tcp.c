@@ -720,7 +720,8 @@ void client_ntp_request(uint8_t *buf,uint8_t *ntpip,uint8_t srcport,uint8_t *dst
    uint16_t ck;
    if (!enc28j60linkup())return;
    //
-   while(i<6){
+   while(i<6)
+   {
       buf[ETH_DST_MAC +i]=dstmac[i]; // gw mac in local lan or host mac
       buf[ETH_SRC_MAC +i]=macaddr[i];
       i++;
@@ -941,7 +942,8 @@ void send_wol(uint8_t *buf,uint8_t *wolmac)
 uint8_t gratutious_arp(uint8_t *buf)
 {
    uint8_t i=0;
-   if (!enc28j60linkup()){
+   if (!enc28j60linkup())
+   {
       return(0);
    }
    //

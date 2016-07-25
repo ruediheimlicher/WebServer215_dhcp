@@ -311,7 +311,8 @@ uint8_t enc28j60linkup(void)
    // that might be what we want.
    // The non latching version is LSTAT.
    // PHSTAT2 LSTAT (= bit 10 in upper reg)
-   if (enc28j60PhyRead(PHSTAT2) & (1<<10) ){
+   if (enc28j60PhyRead(PHSTAT2) & (1<<10) )
+   {
       //if (enc28j60PhyRead(PHSTAT1) & PHSTAT1_LLSTAT){
       return(1);
    }

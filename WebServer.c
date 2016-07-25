@@ -77,9 +77,10 @@ static uint8_t gwmac[6];
 // Netmask (DHCP will provide a value for it):
 static uint8_t netmask[4];
 static char urlvarstr[30];
-static volatile uint8_t sec=0; // counts up to 6 and goes back to zero
-static volatile uint8_t gsec=0; // counts up beyond 6 sec
-
+static volatile uint8_t sec=0;      // counts up to 6 and goes back to zero
+static volatile uint8_t gsec=0;     // counts up beyond 6 sec
+static volatile uint16_t dhcpsec=0;  // zaehler fuer erneuten Check von otherside_ip
+#define DHCPDELAY          300      // delay bis zum erneuten Check von otherside_ip
 static uint8_t buf[BUFFER_SIZE+1];
 static uint8_t start_web_client=0;
 static uint8_t pingsrcip[4];
@@ -101,13 +102,21 @@ void lcdinit(void);
 
 
 // timer interrupt, called automatically every second
-ISR(TIMER1_COMPA_vect){
-        sec++;
-        gsec++;
-        if (sec>5){
-                sec=0;
-                dhcp_6sec_tick();
-        }
+ISR(TIMER1_COMPA_vect)
+{
+   sec++;
+   gsec++;
+   
+   if (sec>5){
+      sec=0;
+      dhcp_6sec_tick();
+   }
+   dhcpsec++;
+   if (dhcpsec > DHCPDELAY)
+   {
+      
+      dhcpsec=0;
+   }
 }
 
 
@@ -153,14 +162,16 @@ uint16_t print_webpage(uint8_t *buf)
    uint8_t err;
    plen=http200ok();
    plen=fill_tcp_data_p(buf,plen,PSTR("<h2>web client status home</h2>\n<pre>\n"));
-   if (gw_arp_state==1){
+   if (gw_arp_state==1)
+   {
       plen=fill_tcp_data_p(buf,plen,PSTR("waiting for GW "));
       mk_net_str(vstr,gwip,4,'.',10);
       plen=fill_tcp_data(buf,plen,vstr);
       plen=fill_tcp_data_p(buf,plen,PSTR(" to answer arp.\n"));
       return(plen);
    }
-   if (dns_state==1){
+   if (dns_state==1)
+   {
       plen=fill_tcp_data_p(buf,plen,PSTR("waiting for DNS answer.\n"));
       err=dnslkup_get_error_info();
       plen=fill_tcp_data_p(buf,plen,PSTR("Error code: "));
@@ -289,7 +300,8 @@ void init_cnt2(void)
 ISR(TIMER2_COMPA_vect)
 {
    cnt2step++;
-   if (cnt2step>50){
+   if (cnt2step>50)
+   {
       cnt2step=0;
       sec++; // stepped every second
    }
@@ -381,9 +393,9 @@ int main(void)
    DDRD&= ~(1<<PIND6);
    PORTD|=1<<PIND6; // internal pullup resistor on
    
-   
+    /*
    LEDON;
-   /*
+  
    // DHCP handling. Get the initial IP
    rval=0;
    init_mac(mymac);
@@ -468,8 +480,13 @@ int main(void)
             // done we have the mac address of the GW
             gw_arp_state=2;
          }
-         if (dns_state==0 && gw_arp_state==2){
-            if (!enc28j60linkup()) continue; // only for dnslkup_request we have to check if the link is up.
+         if (dns_state==0 && gw_arp_state==2)
+         {
+            if (!enc28j60linkup())
+            {
+               continue; // only for dnslkup_request we have to check if the link is up.
+            }
+            
             sec=0;
             dns_state=1;
             dnslkup_request(buf,WEBSERVER_VHOST,gwmac);

@@ -79,7 +79,8 @@ uint8_t dnslkup_request(uint8_t *buf,const char *hostname,const uint8_t *gwmac)
 {
    uint8_t i,lenpos,lencnt;
    haveDNSanswer=0;
-   if(!enc28j60linkup()){
+   if(!enc28j60linkup())
+   {
       dns_ansError=4; // could not send request, link down
       return(1);
    }
@@ -92,7 +93,8 @@ uint8_t dnslkup_request(uint8_t *buf,const char *hostname,const uint8_t *gwmac)
    buf[UDP_DATA_P+2]=1; // flags, standard recursive query
    i=3;
    // most fields are zero, here we zero everything and fill later
-   while(i<12){
+   while(i<12)
+   {
       buf[UDP_DATA_P+i]=0;
       i++;
    }
@@ -106,9 +108,11 @@ uint8_t dnslkup_request(uint8_t *buf,const char *hostname,const uint8_t *gwmac)
    lenpos=12;
    i=13;
    lencnt=1; // need to start with one as there is no dot before the domain name and the below algorithm assumes lencnt=0 at dot
-   while(*hostname){
+   while(*hostname)
+   {
       if (*hostname=='\0') break;
-      if (*hostname=='.'){
+      if (*hostname=='.')
+      {
          buf[UDP_DATA_P+lenpos]=lencnt-1; // fill the length field
          lencnt=0;
          lenpos=i;
@@ -140,9 +144,11 @@ uint8_t dnslkup_request(uint8_t *buf,const char *hostname,const uint8_t *gwmac)
 // process the answer from the dns server:
 // return 1 on sucessful processing of answer.
 // We set also the variable haveDNSanswer
-uint8_t udp_client_check_for_dns_answer(uint8_t *buf,uint16_t plen){
+uint8_t udp_client_check_for_dns_answer(uint8_t *buf,uint16_t plen)
+{
    uint8_t j,i;
-   if (plen<70){
+   if (plen<70)
+   {
       return(0);
    }
    if (buf[UDP_SRC_PORT_L_P]!=53){
@@ -186,7 +192,9 @@ ChecNextResp:
    if (buf[UDP_DATA_P+i] & 0xc0){
       // pointer
       i+=2;
-   }else{
+   }
+   else
+   {
       // we just search for the first, zero=root domain
       // all other octets must be non zero
       while(i<plen-UDP_DATA_P-7){
@@ -200,10 +208,12 @@ ChecNextResp:
    // There might be multipe records in the answer.
    // We are searching for an A record (contains IP).
    // Contributed by Andras Tucsni
-   if (buf[UDP_DATA_P+i+1] != 1){    // check type == 1 for "A"
+   if (buf[UDP_DATA_P+i+1] != 1)
+   {    // check type == 1 for "A"
       i += 2 + 2 + 4;    // skip type & class & TTL
       i += buf[UDP_DATA_P+i+1] + 2;    // skip datalength bytes
-      if (i < plen-UDP_DATA_P-7){
+      if (i < plen-UDP_DATA_P-7)
+      {
          goto ChecNextResp;
       }
       dns_ansError=3; // no A record found but packet ends

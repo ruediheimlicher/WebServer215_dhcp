@@ -54,6 +54,7 @@ extern uint16_t packetloop_dhcp_renewhandler(uint8_t *buf,uint16_t plen);
  static uint8_t mymac[6] = {0x54,0x55,0x58,0x10,0x00,0x29};
  static uint8_t myip[4] = {0,0,0,0};
  static volatile uint8_t sec=0; // counts up to 6 and goes back to zero
+ 
  #define BUFFER_SIZE 850
  static uint8_t buf[BUFFER_SIZE+1];
  //
