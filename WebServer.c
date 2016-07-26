@@ -375,11 +375,12 @@ void ping_callback(uint8_t *ip)
    uint8_t i=0;
    ping_callback_count++;
    // trigger only first time in case we get many ping in a row:
-   if (start_web_client==0)
+//   if (start_web_client==0)
    {
       start_web_client=1;
       // save IP from where the ping came:
-      while(i<4){
+      while(i<4)
+      {
          pingsrcip[i]=ip[i];
          i++;
       }
@@ -511,15 +512,7 @@ int main(void)
    lcd_putc('.');
    lcd_putint(myip[3]);
    
-   lcd_gotoxy(0,2);
-   lcd_putint(otherside_www_ip[0]);
-   lcd_putc('.');
-   lcd_putint(otherside_www_ip[1]);
-   lcd_putc('.');
-   lcd_putint(otherside_www_ip[2]);
-   lcd_putc('.');
-   lcd_putint(otherside_www_ip[3]);
-
+  
    
    /*
     char versionnummer[7];
@@ -568,7 +561,7 @@ int main(void)
             dns_state=2;
             dnslkup_get_ip(otherside_www_ip);
             
-            lcd_gotoxy(0,2);
+            lcd_gotoxy(0,1);
             lcd_putint(otherside_www_ip[0]);
             lcd_putc('.');
             lcd_putint(otherside_www_ip[1]);
