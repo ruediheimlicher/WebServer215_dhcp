@@ -118,7 +118,8 @@ ISR(TIMER1_COMPA_vect)
    sec++;
    gsec++;
    
-   if (sec>5){
+   if (sec>5)
+   {
       sec=0;
       dhcp_6sec_tick();
    }
@@ -139,7 +140,7 @@ ISR(TIMER1_COMPA_vect)
 // Generate an interrup about ever 1s form the 12.5MHz system clock
 // Since we have that 1024 prescaler we do not really generate a second
 // (1.00000256000655361677s) 
-void timer_init(void)
+void timer1_init(void)
 {
         /* write high byte first for 16 bit register access: */
         TCNT1H=0;  /* set counter to zero*/
@@ -439,9 +440,10 @@ int main(void)
    enc28j60clkout(2); // change clkout from 6.25MHz to 12.5MHz
    _delay_loop_1(0); // 60us
    
-   timer_init();
+   timer1_init();
+   
    // von eth
-   init_cnt2();
+   //init_cnt2();
    
    sei();
    
@@ -452,9 +454,9 @@ int main(void)
    // enc28j60PhyWrite(PHLCON,0b0000 0100 0111 01 10);
    enc28j60PhyWrite(PHLCON,0x476);
    
-   // PD6 the the push button:
-   DDRD&= ~(1<<PIND6);
-   PORTD|=1<<PIND6; // internal pullup resistor on
+   // PD6 the push button:
+   //DDRD&= ~(1<<PIND6);
+   //PORTD|=1<<PIND6; // internal pullup resistor on
    
     /*
    LEDON;
@@ -504,6 +506,12 @@ int main(void)
    lcd_puts("V:\0");
    lcd_puts(VERSION);
    lcd_gotoxy(0,1);
+   
+   mk_net_str(str,myip,4,'.',10);
+   lcd_clr_line(1);
+   lcd_puts(str);
+   
+/*
    lcd_putint(myip[0]);
    lcd_putc('.');
    lcd_putint(myip[1]);
@@ -511,7 +519,7 @@ int main(void)
    lcd_putint(myip[2]);
    lcd_putc('.');
    lcd_putint(myip[3]);
-   
+  */
   
    
    /*
@@ -562,6 +570,7 @@ int main(void)
             dnslkup_get_ip(otherside_www_ip);
             
             lcd_gotoxy(0,1);
+            /*
             lcd_putint(otherside_www_ip[0]);
             lcd_putc('.');
             lcd_putint(otherside_www_ip[1]);
@@ -569,6 +578,13 @@ int main(void)
             lcd_putint(otherside_www_ip[2]);
             lcd_putc('.');
             lcd_putint(otherside_www_ip[3]);
+             */
+            //char tempstring[20]
+            mk_net_str(str,otherside_www_ip,4,'.',10);
+            lcd_clr_line(1);
+            lcd_puts(str);
+           
+
 
          }
          if (dns_state!=2)
@@ -586,20 +602,21 @@ int main(void)
          //----------
          if (start_web_client==1) // in ping-callback gesetzt
          {
-            LEDON;
             sec=0;
             start_web_client=2;
             web_client_attempts++;
             mk_net_str(str,pingsrcip,4,'.',10);
             urlencode(str,urlvarstr);
             
+            //lcd_gotoxy(0,2);
+            //lcd_puts(urlvarstr);
            // strcpy((char*)uploadadresse,WEBSERVER_VHOST);
            // strcat((char*)uploadadresse,"/cgi-bin/hello.pl");
            // strcat((char*)uploadadresse,urlvarstr);
             
             //PSTR("/cgi-bin/hello.pl"),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac;
             //client_browse_url(PSTR("/cgi-bin/upld?pw=sec&pingIP="),urlvarstr,PSTR(TUX_WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
-            client_browse_url(PSTR("/cgi-bin/hello.pl?data="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?data=13&x="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
             
          }
          // reset after a delay to prevent permanent bouncing

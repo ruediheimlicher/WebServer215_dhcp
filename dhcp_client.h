@@ -61,7 +61,8 @@ extern uint16_t packetloop_dhcp_renewhandler(uint8_t *buf,uint16_t plen);
  // timer interrupt, called automatically every second
  ISR(TIMER1_COMPA_vect){
  sec++;
- if (sec>5){
+ if (sec>5)
+ {
  sec=0;
  dhcp_6sec_tick();
  }
