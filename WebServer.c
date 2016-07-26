@@ -358,7 +358,7 @@ ISR(TIMER2_COMPA_vect)
    if (cnt2step>50)
    {
       cnt2step=0;
- //     sec++; // stepped every second
+   //   sec++; // stepped every second
   //    lcd_gotoxy(16,3);
   //    lcd_putint(sec);
    }
@@ -502,7 +502,7 @@ int main(void)
    lcd_gotoxy(10,0);
    lcd_puts("V:\0");
    lcd_puts(VERSION);
-   lcd_gotoxy(0,2);
+   lcd_gotoxy(0,1);
    lcd_putint(myip[0]);
    lcd_putc('.');
    lcd_putint(myip[1]);
@@ -510,7 +510,16 @@ int main(void)
    lcd_putint(myip[2]);
    lcd_putc('.');
    lcd_putint(myip[3]);
- 
+   
+   lcd_gotoxy(0,2);
+   lcd_putint(otherside_www_ip[0]);
+   lcd_putc('.');
+   lcd_putint(otherside_www_ip[1]);
+   lcd_putc('.');
+   lcd_putint(otherside_www_ip[2]);
+   lcd_putc('.');
+   lcd_putint(otherside_www_ip[3]);
+
    
    /*
     char versionnummer[7];
@@ -558,6 +567,16 @@ int main(void)
          {
             dns_state=2;
             dnslkup_get_ip(otherside_www_ip);
+            
+            lcd_gotoxy(0,2);
+            lcd_putint(otherside_www_ip[0]);
+            lcd_putc('.');
+            lcd_putint(otherside_www_ip[1]);
+            lcd_putc('.');
+            lcd_putint(otherside_www_ip[2]);
+            lcd_putc('.');
+            lcd_putint(otherside_www_ip[3]);
+
          }
          if (dns_state!=2)
          {
