@@ -593,9 +593,9 @@ int main(void)
             mk_net_str(str,pingsrcip,4,'.',10);
             urlencode(str,urlvarstr);
             
-            strcpy((char*)uploadadresse,WEBSERVER_VHOST);
-            strcat((char*)uploadadresse,"/cgi-bin/hello.pl");
-            strcat((char*)uploadadresse,urlvarstr);
+           // strcpy((char*)uploadadresse,WEBSERVER_VHOST);
+           // strcat((char*)uploadadresse,"/cgi-bin/hello.pl");
+           // strcat((char*)uploadadresse,urlvarstr);
             
             //PSTR("/cgi-bin/hello.pl"),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac;
             //client_browse_url(PSTR("/cgi-bin/upld?pw=sec&pingIP="),urlvarstr,PSTR(TUX_WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
