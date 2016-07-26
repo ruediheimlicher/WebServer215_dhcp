@@ -275,7 +275,7 @@ int main(void)
             
             
             
-             client_browse_url(PSTR("/cgi-bin/hello.pl?data="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+             client_browse_url(PSTR("/cgi-bin/hello.pl?data="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,(void*)otherside_www_ip,gwmac);
              /*
             client_browse_url(PSTR("/cgi-bin/upld?pw=sec&action=btn&ethbrd_ip="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
               */
