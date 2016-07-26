@@ -478,6 +478,16 @@ int main(void)
          if (dns_state==1 && dnslkup_haveanswer()){
             dns_state=2;
             dnslkup_get_ip(otherside_www_ip);
+            
+            lcd_gotoxy(0,2);
+            lcd_putint(otherside_www_ip[0]);
+            lcd_putc('.');
+            lcd_putint(otherside_www_ip[1]);
+            lcd_putc('.');
+            lcd_putint(otherside_www_ip[2]);
+            lcd_putc('.');
+            lcd_putint(otherside_www_ip[3]);
+
          }
          if (dns_state!=2)
          {
