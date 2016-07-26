@@ -72,6 +72,8 @@ static uint8_t otherside_www_ip[4];
 
 static uint8_t myip[4] = {192,168,1,209};
 static uint8_t gwip[4] = {192,168,1,1};
+static char dhcpstring[64]; // string fuer Daten zu dhcp.pl
+
 
 #define TRANS_NUM_GWMAC 1
 static uint8_t gwmac[6];
@@ -419,6 +421,8 @@ int main(void)
    
    uint16_t dat_p,plen;
    char str[20];
+   char dhcpstr[20]; // fuer tempdaten bei dhcp-transfer
+
    uint8_t rval;
    
    DDRB|= (1<<DDB1); // LED, enable PB1 as output
@@ -570,16 +574,6 @@ int main(void)
             dnslkup_get_ip(otherside_www_ip);
             
             lcd_gotoxy(0,1);
-            /*
-            lcd_putint(otherside_www_ip[0]);
-            lcd_putc('.');
-            lcd_putint(otherside_www_ip[1]);
-            lcd_putc('.');
-            lcd_putint(otherside_www_ip[2]);
-            lcd_putc('.');
-            lcd_putint(otherside_www_ip[3]);
-             */
-            //char tempstring[20]
             mk_net_str(str,otherside_www_ip,4,'.',10);
             lcd_clr_line(1);
             lcd_puts(str);
@@ -605,19 +599,62 @@ int main(void)
             sec=0;
             start_web_client=2;
             web_client_attempts++;
-            mk_net_str(str,pingsrcip,4,'.',10);
-            urlencode(str,urlvarstr);
+            
+            
+            mk_net_str(dhcpstr,pingsrcip,4,'.',10);
+            urlencode(dhcpstr,urlvarstr);
+            
+            mk_net_str(dhcpstr,otherside_www_ip,4,'.',10);
+            char otheripstr[20];
+            urlencode(dhcpstr,otheripstr);
+            
+            
             
             //lcd_gotoxy(0,2);
             //lcd_puts(urlvarstr);
            // strcpy((char*)uploadadresse,WEBSERVER_VHOST);
            // strcat((char*)uploadadresse,"/cgi-bin/hello.pl");
            // strcat((char*)uploadadresse,urlvarstr);
-            
+            /*
+            // webserver home:
+             
+             char key1[]="pw=";
+             char sstr[]="Pong";
+
+             strcpy(HeizungDataString,key1);
+             strcat(HeizungDataString,sstr);
+             
+             strcpy(HeizungDataString,"&d0="); //Bit 0-4: Stunde, 5 bit     Bit 5-7: Raumnummer
+             
+             itoa(inbuffer[0],d,16);
+             strcat(HeizungDataString,d);
+             
+             strcat(HeizungDataString,"&d1="); //
+             itoa(inbuffer[1],d,16);
+             strcat(HeizungDataString,d);
+
+           // client_browse_url((char*)PSTR("/cgi-bin/home.pl?"),HeizungDataString,(char*)PSTR(WEBSERVER_VHOST),&home_browserresult_callback);
+
+            */
             //PSTR("/cgi-bin/hello.pl"),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac;
             //client_browse_url(PSTR("/cgi-bin/upld?pw=sec&pingIP="),urlvarstr,PSTR(TUX_WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
-            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?data=13&x="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
             
+            char key1[]="homeip=";
+            char key2[]="&othersideip=";
+
+            strcpy(dhcpstring,key1);
+            strcat(dhcpstring,urlvarstr);
+            
+            strcat(dhcpstring,key2);
+            strcat(dhcpstring,otheripstr);
+            
+            
+            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstring,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+
+//            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?data=13&x="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+            
+         
+         
          }
          // reset after a delay to prevent permanent bouncing
          if (sec>30 && start_web_client==2)
