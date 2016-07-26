@@ -1350,13 +1350,16 @@ uint16_t packetloop_arp_icmp_tcp(uint8_t *buf,uint16_t plen)
    // arp is broadcast if unknown but a host may also
    // verify the mac address by sending it to
    // a unicast address.
-   if(eth_type_is_arp_and_my_ip(buf,plen)){
-      if (buf[ETH_ARP_OPCODE_L_P]==ETH_ARP_OPCODE_REQ_L_V){
+   if(eth_type_is_arp_and_my_ip(buf,plen))
+   {
+      if (buf[ETH_ARP_OPCODE_L_P]==ETH_ARP_OPCODE_REQ_L_V)
+      {
          // is it an arp request
          make_arp_answer_from_request(buf);
       }
 #ifdef ARP_MAC_resolver_client
-      if ((arpip_state & WGW_ACCEPT_ARP_REPLY) && (buf[ETH_ARP_OPCODE_L_P]==ETH_ARP_OPCODE_REPLY_L_V)){
+      if ((arpip_state & WGW_ACCEPT_ARP_REPLY) && (buf[ETH_ARP_OPCODE_L_P]==ETH_ARP_OPCODE_REPLY_L_V))
+      {
          // is it an arp reply
          if (memcmp(&buf[ETH_ARP_SRC_IP_P],arpip,4)!=0) return(0); // not an arp reply for the IP we were searching
          (*client_arp_result_callback)(arpip,arp_reference_number,buf+ETH_ARP_SRC_MAC_P);
@@ -1367,10 +1370,12 @@ uint16_t packetloop_arp_icmp_tcp(uint8_t *buf,uint16_t plen)
       
    }
    // check if ip packets are for us:
-   if(eth_type_is_ip_and_my_ip(buf,plen)==0){
+   if(eth_type_is_ip_and_my_ip(buf,plen)==0)
+   {
       return(0);
    }
-   if(buf[IP_PROTO_P]==IP_PROTO_ICMP_V && buf[ICMP_TYPE_P]==ICMP_TYPE_ECHOREQUEST_V){
+   if(buf[IP_PROTO_P]==IP_PROTO_ICMP_V && buf[ICMP_TYPE_P]==ICMP_TYPE_ECHOREQUEST_V)
+   {
       if (icmp_callback){
          (*icmp_callback)(&(buf[IP_SRC_P]));
       }

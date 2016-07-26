@@ -50,6 +50,7 @@
 #include "datum.c"
 #include "version.c"
 #include "webpage.c"
+//#include "current.c"
 
 //
 // Please modify the following lines. mac and ip have to be unique
@@ -98,7 +99,17 @@ static volatile uint8_t browser_callback_count=0;
 static  char* uploadadresse[64];
 
 // Prototypes
-void lcdinit(void);
+
+
+
+/*
+void initOSZI(void)
+{
+   OSZIPORTDDR |= (1<<PULS);
+   OSZIPORT |= (1<<PULS); // HI
+}
+
+*/
 
 
 // timer interrupt, called automatically every second
@@ -111,12 +122,17 @@ ISR(TIMER1_COMPA_vect)
       sec=0;
       dhcp_6sec_tick();
    }
+   
    dhcpsec++;
    if (dhcpsec > DHCPDELAY)
    {
-      
       dhcpsec=0;
    }
+   lcd_gotoxy(13,3);
+   lcd_putint(dhcpsec);
+   lcd_gotoxy(17,3);
+   lcd_putint(sec);
+
 }
 
 
@@ -279,9 +295,48 @@ uint16_t print_webpage(uint8_t *buf)
    plen=fill_tcp_data_p(buf,plen,PSTR("\n</pre><br><hr>"));
    return(plen);
 }
+/*
+void initTimer0(void)
+{
+   PRR&=~(1<<PRTIM0); // write power reduction register to zero
+   TIMSK0=(1<<OCIE0A); // compare match on OCR2A
+   TCNT0=0;  // init counter
+   OCR0A=244; // value to compare against
+   TCCR0A=(1<<WGM01); // do not change any output pin, clear at compare match
+  
+   // CS22	CS21	CS20	Description
+   //  0    0     0     No clock source
+  //   0    0     1     clk/1
+  //   0    1     0     clk/8
+  //   0    1     1     clk/32
+  //   1    0     0     clk/64
+  //   1    0     1     clk/128
+  //   1    1     0     clk/256
+  //   1    1     1     clk/1024
+   
+   // divide clock by 1024: 12.5MHz/128=12207 Hz
+   TCCR0B=(1<<CS02)|(1<<CS00); // clock divider, start counter // anders als timer2
+   // OCR0A=244: 12207/244=50Hz
+}
+ISR(TIMER0_COMPA_vect)
+{
+   cnt2step++;
+   if (cnt2step>50)
+   {
+      cnt2step=0;
+      sec++; // stepped every second
+   }
+}
+*/
+// ******************************************
+// ******* conflict with timer2 in current
+// ******************************************
+/*
 
 /* setup timer T2 as an interrupt generating time base.
  * You must call once sei() in the main program */
+
+
 void init_cnt2(void)
 {
    cnt2step=0;
@@ -303,9 +358,15 @@ ISR(TIMER2_COMPA_vect)
    if (cnt2step>50)
    {
       cnt2step=0;
-      sec++; // stepped every second
+ //     sec++; // stepped every second
+  //    lcd_gotoxy(16,3);
+  //    lcd_putint(sec);
    }
 }
+
+// ******************************************
+// ******************************************
+
 // we were ping-ed by somebody, store the ip of the ping sender
 // and trigger an upload to http://tuxgraphics.org/cgi-bin/upld
 // This is just for testing and demonstration purpose
@@ -339,7 +400,8 @@ void browserresult_callback(uint16_t webstatuscode,uint16_t datapos __attribute_
 // the __attribute__((unused)) is a gcc compiler directive to avoid warnings about unsed variables.
 void arpresolver_result_callback(uint8_t *ip __attribute__((unused)),uint8_t transaction_number,uint8_t *mac){
    uint8_t i=0;
-   if (transaction_number==TRANS_NUM_GWMAC){
+   if (transaction_number==TRANS_NUM_GWMAC)
+   {
       // copy mac address over:
       while(i<6){gwmac[i]=mac[i];i++;}
    }
@@ -457,7 +519,7 @@ int main(void)
     lcd_puts(versionnummer);
     */
    _delay_ms(1600);
-   
+//   initOSZI();
   
    // ***** end eigene Declarations ***********
    
@@ -492,7 +554,8 @@ int main(void)
             dnslkup_request(buf,WEBSERVER_VHOST,gwmac);
             continue;
          }
-         if (dns_state==1 && dnslkup_haveanswer()){
+         if (dns_state==1 && dnslkup_haveanswer())
+         {
             dns_state=2;
             dnslkup_get_ip(otherside_www_ip);
          }
@@ -543,7 +606,8 @@ int main(void)
          continue;
       }
       
-      if (strncmp("GET ",(char *)&(buf[dat_p]),4)!=0){
+      if (strncmp("GET ",(char *)&(buf[dat_p]),4)!=0)
+      {
          // head, post and other methods:
          //
          // for possible status codes see:
@@ -552,7 +616,8 @@ int main(void)
          dat_p=fill_tcp_data_p(buf,dat_p,PSTR("<h1>200 OK</h1>"));
          goto SENDTCP;
       }
-      if (strncmp("/ ",(char *)&(buf[dat_p+4]),2)==0){
+      if (strncmp("/ ",(char *)&(buf[dat_p+4]),2)==0)
+      {
          dat_p=http200ok();
          dat_p=print_webpage(buf);
          goto SENDTCP;
