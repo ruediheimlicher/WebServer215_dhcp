@@ -50,7 +50,7 @@
 #include "datum.c"
 #include "version.c"
 #include "webpage.c"
-//#include "current.c"
+#include "current.c"
 
 //
 // Please modify the following lines. mac and ip have to be unique
@@ -93,25 +93,131 @@ static volatile uint8_t cnt2step=0;
 static int8_t dns_state=0;
 static int8_t gw_arp_state=0;
 
-static volatile uint8_t ping_callback_count=0;
-static volatile uint8_t browser_callback_count=0;
+static uint8_t client_status=0; // Flags fuer senden von Data an Webserver
+#define SENDDEFAULTPAGE 1
+#define SENDSTROMPAGE 2
+
+static volatile uint8_t ping_callback_count=0; // Anzahl pings seit neustart
+static volatile uint8_t browser_callback_count=0;// Anzahl erfolgreiche Aufrufe der website seit neustart
+
+#define STARTDELAYBIT		0
+#define WDTBIT             7
+#define TASTATURPIN			0           //	Eingang fuer Tastatur
+#define ECHOPIN            5           //	Ausgang fuer Impulsanzeige
+#define ANALOGPIN 6
+#define MASTERCONTROLPIN	4           // Eingang fuer MasterControl: Meldung MasterReset
+
+#define INT0PIN            2           // Pin Int0
+#define INT1PIN            3           // Pin Int1
+#define TIMERIMPULSDAUER            10    // us
+#define CURRENTSEND                 0     // Daten an server senden
+#define CURRENTSTOP                 1     // Bit fuer: Impulse ignorieren
+#define CURRENTWAIT                 2     // Bit fuer: Impulse wieder bearbeiten
+#define CURRENTMESSUNG              3     // Bit fuer: Messen
+#define DATASEND                    4     // Bit fuer: Daten enden
+#define DATAOK                      5     // Data kan gesendet weren
+#define DATAPEND                    6     // Senden ist pendent
+#define DATALOOP                    7     // wird von loopcount1 gesetzt, startet senden
+
+#define TIMER0_SEKUNDENTAKT            50000           // Anz Overflows von timer0 bis 1 Sekunde
 
 
+static volatile uint16_t timer0counter=0;
+static volatile uint16_t sekundencounter=0;
 
-static  char* uploadadresse[64];
+volatile uint16_t                   wattstunden=0;
+volatile uint16_t                   kilowattstunden=0;
+volatile uint32_t                   webleistung=0;
 
-// Prototypes
+volatile float leistung =1;
+float lastleistung =1;
+uint8_t lastcounter=0;
+volatile uint8_t  anzeigewert =0;
+
+static char stromstring[10];
+static char CurrentDataString[64];
 
 
+// http://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way
+char *trimwhitespace(char *str)
+{
+   char *end;
+   
+   // Trim leading space
+   while(isspace(*str)) str++;
+   
+   if(*str == 0)  // All spaces?
+      return str;
+   
+   // Trim trailing space
+   end = str + strlen(str) - 1;
+   while(end > str && isspace(*end)) end--;
+   
+   // Write new null terminator
+   *(end+1) = 0;
+   
+   return str;
+}
 
-/*
+
 void initOSZI(void)
 {
    OSZIPORTDDR |= (1<<PULS);
    OSZIPORT |= (1<<PULS); // HI
 }
 
-*/
+void timer0() // Analoganzeige Messinstrument
+{
+   //----------------------------------------------------
+   // Set up timer 0
+   //----------------------------------------------------
+   /*
+    TCCR0A = _BV(WGM01);
+    TCCR0B = _BV(CS00) | _BV(CS02);
+    OCR0A = 0x2;
+    TIMSK0 = _BV(OCIE0A);
+    */
+   
+   DDRD |= (1<< PD6);   // OC0A Output
+   
+   TCCR0A |= (1<<WGM00);   // fast PWM  top = 0xff
+   TCCR0A |= (1<<WGM01);   // PWM
+   //TCCR0A |= (1<<WGM02);   // PWM
+   
+   TCCR0A |= (1<<COM0A1);   // set OC0A at bottom, clear OC0A on compare match
+   TCCR0B |= 1<<CS02;
+   TCCR0B |= 1<<CS00;
+   
+   OCR0A=0;
+   TIMSK0 |= (1<<OCIE0A);
+   
+   
+}
+
+ISR(TIMER0_COMPA_vect)
+{
+   
+   OCR0A = anzeigewert;
+   //OCR0A++;
+   PORTD &= ~(1<<ANALOGPIN); //LO
+   
+   
+}
+
+
+ISR(TIMER0_OVF_vect)
+{
+   timer0counter++;
+   if (timer0counter== TIMER0_SEKUNDENTAKT)
+   {
+      OSZITOGG;
+      sekundencounter++;
+      timer0counter=0;
+      //lcd_gotoxy(15,0);
+      //lcd_putint(timer0counter);
+   }
+   PORTD |= (1<<ANALOGPIN);
+}
 
 
 // timer interrupt, called automatically every second
@@ -159,11 +265,6 @@ void timer1_init(void)
         // interrupt mask bit:
         TIMSK1 = (1 << OCIE1A);
 }
-
-
-
-
-
 
 
 // von test_www_client
@@ -264,7 +365,6 @@ uint16_t print_webpage(uint8_t *buf)
    plen=fill_tcp_data(buf,plen,vstr);
    plen=fill_tcp_data_p(buf,plen,PSTR("\t"));
    
-   
    //ping_callback_count
    plen=fill_tcp_data_p(buf,plen,PSTR("\nping_callback_count:\t "));
    
@@ -295,6 +395,7 @@ uint16_t print_webpage(uint8_t *buf)
    
    
    // plen=fill_tcp_data_p(buf,plen,PSTR("\ncheck result: <a href=http://tuxgraphics.org/cgi-bin/upld>http://tuxgraphics.org/cgi-bin/upld</a>"));
+   
    plen=fill_tcp_data_p(buf,plen,PSTR("\n</pre><br><hr>"));
    return(plen);
 }
@@ -336,9 +437,10 @@ ISR(TIMER0_COMPA_vect)
 // ******************************************
 /*
 
-/* setup timer T2 as an interrupt generating time base.
- * You must call once sei() in the main program */
+// setup timer T2 as an interrupt generating time base.
+// * You must call once sei() in the main program
 
+ /*
 
 void init_cnt2(void)
 {
@@ -366,7 +468,7 @@ ISR(TIMER2_COMPA_vect)
   //    lcd_putint(sec);
    }
 }
-
+*/
 // ******************************************
 // ******************************************
 
@@ -402,7 +504,8 @@ void browserresult_callback(uint16_t webstatuscode,uint16_t datapos __attribute_
 }
 
 // the __attribute__((unused)) is a gcc compiler directive to avoid warnings about unsed variables.
-void arpresolver_result_callback(uint8_t *ip __attribute__((unused)),uint8_t transaction_number,uint8_t *mac){
+void arpresolver_result_callback(uint8_t *ip __attribute__((unused)),uint8_t transaction_number,uint8_t *mac)
+{
    uint8_t i=0;
    if (transaction_number==TRANS_NUM_GWMAC)
    {
@@ -462,7 +565,7 @@ int main(void)
    //DDRD&= ~(1<<PIND6);
    //PORTD|=1<<PIND6; // internal pullup resistor on
    
-    /*
+    /* ************* DHCP Handling ***********
    LEDON;
   
    // DHCP handling. Get the initial IP
@@ -495,7 +598,8 @@ int main(void)
       packetloop_arp_icmp_tcp(buf,plen);
    }
    LEDOFF;
-    */
+   ************* End DHCP Handling *********** */
+   
    //init the web server ethernet/ip layer:
    init_udp_or_www_server(mymac,myip);
    www_server_port(MYWWWPORT);
@@ -515,17 +619,6 @@ int main(void)
    lcd_clr_line(1);
    lcd_puts(str);
    
-/*
-   lcd_putint(myip[0]);
-   lcd_putc('.');
-   lcd_putint(myip[1]);
-   lcd_putc('.');
-   lcd_putint(myip[2]);
-   lcd_putc('.');
-   lcd_putint(myip[3]);
-  */
-  
-   
    /*
     char versionnummer[7];
     strcpy(versionnummer,&VERSION[13]);
@@ -535,27 +628,395 @@ int main(void)
    _delay_ms(1600);
 //   initOSZI();
   
+   // current defs
+   static volatile uint8_t paketcounter=0;
+   
+   uint8_t i=0;
+
    // ***** end eigene Declarations ***********
    
    while(1)
    {
+#pragma mark current routines
+      //**	Beginn Current-Routinen	***********************
+      
+      if (currentstatus & (1<<IMPULSBIT)) // neuer Impuls angekommen, Zaehlung lauft
+      {
+         PORTD |=(1<<ECHOPIN);
+         
+         messungcounter ++;
+         currentstatus++; // ein Wert mehr gemessen
+         
+         impulszeitsumme += impulszeit/ANZAHLWERTE;      // Wert aufsummieren
+         
+         if (filtercount == 0) // neues Paket
+         {
+            filtermittelwert = impulszeit;
+         }
+         else
+         {
+            if (filtercount < filterfaktor)
+            {
+               filtermittelwert = ((filtercount-1)* filtermittelwert + impulszeit)/filtercount;
+               
+               //lcd_gotoxy(19,1);
+               //lcd_putc('a');
+               
+            }
+            else
+            {
+               filtermittelwert = ((filterfaktor-1)* filtermittelwert + impulszeit)/filterfaktor;
+               
+               
+               //lcd_gotoxy(19,1);
+               //lcd_putc('f');
+               
+            }
+            
+         }
+         
+         char filterstromstring[8];
+         filtercount++;
+         /*
+          lcd_gotoxy(0,0);
+          lcd_putint16(impulszeit/100);
+          lcd_gotoxy(10,0);
+          lcd_putint16(filtermittelwert/100);
+          lcd_gotoxy(10,1);
+          lcd_putint(filtercount);
+          lcd_putc('*');
+          
+          dtostrf(filtermittelwert,5,1,filterstromstring);
+          //lcd_puts(filterstromstring);
+          */
+         
+         if (filtercount & (filterfaktor == 0)) // Wert anzeigen
+         {
+            //lcd_gotoxy(10,0);
+            //lcd_putint16(filtermittelwert);
+            //lcd_putc('*');
+            //dtostrf(filtermittelwert,5,1,filterstromstring);
+            //lcd_puts(filterstromstring);
+         }
+         
+         
+         if ((currentstatus & 0x0F) == ANZAHLWERTE)      // genuegend Werte
+         {
+            
+            lcd_gotoxy(19,0);
+            lcd_putc(' ');
+            //lcd_putc(' ');
+            //lcd_gotoxy(6,1);
+            //lcd_putc(' ');
+            
+            //lcd_gotoxy(16,1);
+            //lcd_puts("  \0");
+            //lcd_gotoxy(0,1);
+            //lcd_puts("    \0");
+            
+            //lcd_gotoxy(0,1);
+            //lcd_putint(messungcounter);
+            
+            paketcounter++;
+            
+            //lcd_gotoxy(0,0);
+            //lcd_puts("  \0");
+            /*
+             if ((paketcounter & 1)==0)
+             {
+             lcd_gotoxy(8,1);
+             lcd_putc(':');
+             
+             }
+             else
+             {
+             lcd_gotoxy(8,1);
+             lcd_putc(' ');
+             }
+             */
+            //lcd_gotoxy(0,0);
+            //lcd_putint2(paketcounter);
+            
+            
+            impulsmittelwert = impulszeitsumme;
+            impulszeitsumme = 0;
+            
+            currentstatus &= 0xF0; // Bit 0-3 reset
+            
+            
+            //uint8_t lb= impulsmittelwert & 0xFF;
+            //uint8_t hb = (impulsmittelwert>>8) & 0xFF;
+            
+            //                lcd_gotoxy(0,1);
+            //               lcd_putc('I');
+            //lcd_puts("INT0 \0");
+            
+            //lcd_puthex(hb);
+            //lcd_puthex(lb);
+            //lcd_putc(':');
+            
+            //char impstring[12];
+            //dtostrf(impulsmittelwert,8,2,impstring);
+            lcd_gotoxy(0,0);
+            //lcd_puts(impstring);
+            //lcd_putc(':');
+            lcd_putint16(impulsmittelwert);
+            lcd_putc('*');
+            
+            
+            // lcd_gotoxy(5,0);
+            // lcd_putint(sendintervallzeit);
+            // lcd_putc('$');
+            
+            /*
+             Impulsdauer: impulsmittelwert * TIMERIMPULSDAUER (10us)
+             Umrechnung auf ms: /1000
+             Energie pro Zählerimpuls: 360 Ws
+             Leistung: (Energie pro Zählerimpuls)/Impulsabstand
+             Umrechnung auf Sekunden: *1000
+             Faktor: *100000
+             */
+            
+            //     leistung = 0xFFFF/impulsmittelwert;
+            if (impulsmittelwert)
+            {
+               leistung = 360.0/impulsmittelwert*100000.0;// 480us
+               
+               // webleistung = (uint32_t)360.0/impulsmittelwert*1000000.0;
+               webleistung = (uint32_t)360.0/impulsmittelwert*100000.0;
+               
+               
+               lcd_gotoxy(0,1);
+               lcd_putint16(webleistung);
+               lcd_putc('*');
+            }
+            
+            //     Stromzaehler
+            
+            wattstunden = impulscount/10; // 310us
+            
+            
+            //OSZILO;
+            /*
+             // ganze Anzeige 55 ms
+             lcd_gotoxy(9,1);
+             lcd_putint(wattstunden/1000);
+             lcd_putc('.');
+             lcd_putint3(wattstunden);
+             lcd_putc('W');
+             lcd_putc('h');
+             */
+            //OSZIHI;
+            
+            
+            // dtostrf(leistung,5,0,stromstring); // fuehrt zu 'strom=++123' in URL fuer strom.pl. Funktionierte trotzdem
+            
+            //         dtostrf(leistung,5,1,stromstring); // 800us
+            
+            
+            //lcd_gotoxy(0,0);
+            //lcd_putc('L');
+            //lcd_putc(':');
+            
+            
+            if (!(paketcounter == 1))
+            {
+               
+               //lcd_puts("     \0");
+               
+               //lcd_gotoxy(2,0);
+               //lcd_puts(stromstring);
+               //lcd_putc(' ');
+               //lcd_putc('W');
+            }
+            //lcd_putc('*');
+            //lcd_putc(' ');
+            //lcd_putint16(leistung);
+            //lcd_putc(' ');
+            
+            /*
+             if (abs(leistung-lastleistung) > 10)
+             {
+             lastcounter++;
+             
+             if (lastcounter>3)
+             {
+             char diff[10];
+             dtostrf(leistung-lastleistung,7,2,diff);
+             lcd_gotoxy(10,1);
+             lcd_putc('D');
+             lcd_putc(':');
+             lcd_puts(diff);
+             lastleistung = leistung;
+             }
+             }
+             else
+             {
+             lastcounter=0;
+             }
+             */
+            
+            // if (paketcounter  >= ANZAHLPAKETE)
+            if (webstatus & (1<<DATALOOP))
+            {
+               
+               webstatus &= ~(1<<DATALOOP);
+               
+               //uint16_t zufall = rand() % 0x0F + 1;;
+               
+               //lcd_putc(' ');
+               //lcd_putint12(zufall);
+               //leistung += zufall;
+               
+               
+               
+               //dtostrf(leistung,5,1,stromstring); // 800us
+               dtostrf(webleistung,10,0,stromstring); // 800us
+               
+               
+               paketcounter=0;
+               
+               uint16_t tempmitte = 0;
+               for (i=0;i<4;i++)
+               {
+                  tempmitte+= stromimpulsmittelwertarray[i];
+               }
+               tempmitte/= 4;
+               lcd_gotoxy(14,0);
+               lcd_putc('m');
+               lcd_putint12(tempmitte);
+               //         filtercount =0;
+               
+               //if (TEST)
+               {
+                  //lcd_gotoxy(0,0);
+                  //lcd_putint(messungcounter);
+                  //lcd_putc(' ');
+                  //OSZILO;
+                  
+                  
+                  lcd_gotoxy(9,1);
+                  lcd_putint(wattstunden/1000);
+                  lcd_putc('.');
+                  lcd_putint3(wattstunden);
+                  lcd_putc('W');
+                  lcd_putc('h');
+                  
+                  //OSZIHI;
+               }
+               
+               if (!(webstatus & (1<<DATAPEND))) // wartet nicht auf callback
+               {
+                  // stromstring bilden
+                  char key1[]="pw=\0";
+                  char sstr[]="Pong\0";
+                  
+                  strcpy(CurrentDataString,key1);
+                  strcat(CurrentDataString,sstr);
+                  
+                  strcat(CurrentDataString,"&strom0=\0");
+                  char webstromstring[16]={};
+                  
+                  //      urlencode(stromstring,webstromstring);
+                  
+                  strcpy(webstromstring,stromstring);
+                  lcd_gotoxy(0,2);
+                  //lcd_puts(stromstring);
+                  //lcd_putc('-');
+                  //lcd_puts(webstromstring);
+                  //lcd_putc('-');
+                  
+                  char* tempstromstring = (char*)trimwhitespace(webstromstring);
+                  lcd_puts(tempstromstring);
+                  //lcd_putc('$');
+                  
+                  //strcat(CurrentDataString,stromstring);
+                  strcat(CurrentDataString,tempstromstring);
+                  
+                  /*
+                   // kontolle
+                   char substr[20];
+                   uint8_t l=strlen(CurrentDataString);
+                   strncpy(substr, CurrentDataString+8, (l));
+                   lcd_gotoxy(0,1);
+                   lcd_puts(substr);
+                   _delay_ms(10);
+                   */
+               }
+               
+               
+               
+               // senden aktivieren
+               webstatus |= (1<<DATASEND);
+               webstatus |= (1<<DATAOK);
+               // Messung anhalten
+               webstatus |= (1<<CURRENTSTOP);
+               // Warten aktivieren
+               webstatus |= (1<<CURRENTWAIT);
+               
+               paketcounter=0;
+               //sendWebCount++;
+               //           lcd_gotoxy(6,1);
+               //           lcd_putc('>');
+            } // if DATALOOP
+            
+            //anzeigewert = 0xFF/0x8000*leistung; // 0x8000/0x255 = 0x81
+            //anzeigewert = leistung/0x81;
+            
+            anzeigewert = leistung /0x18; // /24
+            
+            // if (TEST)
+            {
+               lcd_gotoxy(9,0);
+               lcd_putint(anzeigewert);
+            }
+            
+            webstatus |= (1<<CURRENTSEND);
+            
+         } // genuegend Werte
+         else
+         {
+            //lcd_gotoxy(8,1);
+            //lcd_puts("    \0");
+            
+         }
+         
+         PORTD &= ~(1<<ECHOPIN);
+         impulszeit=0;
+         currentstatus &= ~(1<<IMPULSBIT);
+         
+         
+      }
+      //**    End Current-Routinen*************************
+      
+      
+#pragma mark PacketReceive
       // handle ping and wait for a tcp packet
       plen=enc28j60PacketReceive(BUFFER_SIZE, buf);
       dat_p=packetloop_arp_icmp_tcp(buf,plen);
       if(plen==0)
       {
+         
          // we are idle here trigger arp and dns stuff here
          if (gw_arp_state==0)
          {
+            //mk_net_str(str,gwip,4,'.',10);
+            //lcd_clr_line(2);
+            //lcd_puts(str);
+
             // find the mac address of the gateway (e.g your dsl router).
             get_mac_with_arp(gwip,TRANS_NUM_GWMAC,&arpresolver_result_callback);
             gw_arp_state=1;
          }
+         
          if (get_mac_with_arp_wait()==0 && gw_arp_state==1)
          {
             // done we have the mac address of the GW
             gw_arp_state=2;
          }
+         
+         //dns_state=0;
+         //gw_arp_state=2;
          if (dns_state==0 && gw_arp_state==2)
          {
             if (!enc28j60linkup())
@@ -568,6 +1029,7 @@ int main(void)
             dnslkup_request(buf,WEBSERVER_VHOST,gwmac);
             continue;
          }
+         
          if (dns_state==1 && dnslkup_haveanswer())
          {
             dns_state=2;
@@ -577,8 +1039,6 @@ int main(void)
             mk_net_str(str,otherside_www_ip,4,'.',10);
             lcd_clr_line(1);
             lcd_puts(str);
-           
-
 
          }
          if (dns_state!=2)
@@ -664,6 +1124,7 @@ int main(void)
          }
          continue;
       }
+      
       if(dat_p==0)
       { // plen!=0
          // check for incomming messages not processed

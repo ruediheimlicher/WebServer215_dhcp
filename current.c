@@ -76,7 +76,7 @@ volatile uint8_t stromimpulsindex=0;
 #define CURRENTSTOP                 1     // Bit fuer: Impulse ignorieren
 #define CURRENTWAIT                 2     // Bit fuer: Impulse wieder bearbeiten
 
-#define	IMPULSPIN              0    // Pin fuer Anzeige Impuls
+#define	IMPULSPIN                  0    // Pin fuer Anzeige Impuls
 
 // Fehlerbits
 #define  CALLBACKERR                0
@@ -191,7 +191,7 @@ ISR (TIMER2_OVF_vect)
 */
 
 
-ISR( INT1_vect )
+ISR( INT1_vect ) // Neuer Impuls vom Zaehler ist angekommen
 {
    //lcd_gotoxy(0,1);
 	//lcd_puts("I0:\0");
@@ -199,12 +199,11 @@ ISR( INT1_vect )
    
    stromimpulscounter++;
    
-   volatile uint8_t messungcounter;
+//   volatile uint8_t messungcounter;
    
    if (webstatus & (1<<CURRENTSTOP)) // Webevent im Gang, Impulse ignorieren
    {
       //lcd_puts("st\0");
-     
       //return;
    }
    
@@ -244,7 +243,8 @@ void InitCurrent(void)
 */
    // interrupt on INT1 pin falling edge 
    EICRA = (1<<ISC11) ;//| (0<<ISC10);
-	// turn on interrupts!
+	
+   // turn on interrupts!
 	EIMSK  |= (1<<INT1);
 
 
