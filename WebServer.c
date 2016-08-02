@@ -576,6 +576,7 @@ void browserresult_callback(uint16_t webstatuscode,uint16_t datapos , uint16_t l
       lcd_puts("bOK\0");
 
       web_client_sendok++;
+      webstatus &= ~(1<<CALLBACKWAIT);
       LEDOFF;
    }
    else
@@ -1275,69 +1276,6 @@ int main(void)
             start_web_client=2;
             web_client_attempts++;
             
-            // dhcp-string aufbauen
-            mk_net_str(dhcpstr,pingsrcip,4,'.',10);
-            urlencode(dhcpstr,urlvarstr);
-            
-            char key1[]="homeip=";
-            strcpy(dhcpstring,key1);
-            strcat(dhcpstring,urlvarstr);
-            
-            mk_net_str(dhcpstr,otherside_www_ip,4,'.',10);
-            char otheripstr[20];
-            urlencode(dhcpstr,otheripstr);
-            
-            char key2[]="&othersideip=";
-            strcat(dhcpstring,key2);
-            strcat(dhcpstring,otheripstr);
- 
-            char key3[]="&leistung=";
-            strcat(dhcpstring,key3);
-            
-            /*
-            char d[24];
-            dtostrf(leistung,10,2,d);
-            char* dd=(char*)trimwhitespace(d); // whitespace weg
-            strcat(dhcpstring,dd);
-            
-            lcd_gotoxy(13,1);
-            lcd_puts(dd);
-            
-            
-            char key4[]="&mittel=";
-            strcat(dhcpstring,key4);
-            dtostrf(impulsmittelwert,10,2,d);
-            char* mm=(char*)trimwhitespace(d); // whitespace weg
-            strcat(dhcpstring,mm);
-            */
-            char key5[]="&counter=";
-            strcat(dhcpstring,key5);
-            
-            char countstring[4];
-            itoa(web_client_sendok,countstring,10);
-            char* cc =(char*)trimwhitespace(countstring);
-            strcat(dhcpstring,cc);
-            
-            char key6[]="&callback=";
-            strcat(dhcpstring,key6);
-            itoa(browser_callback_count,countstring,10);
-            char* bb =(char*)trimwhitespace(countstring);
-            strcat(dhcpstring,bb);
-            
-             //web_client_attempts
-            char key7[]="&attempts=";
-            strcat(dhcpstring,key7);
-            itoa(web_client_attempts,countstring,10);
-            char*aa =(char*)trimwhitespace(countstring);
-            strcat(dhcpstring,aa);
-
-            char key8[]="&senderr=";
-            strcat(dhcpstring,key8);
-            itoa(web_client_send_err,countstring,10);
-            char*ee =(char*)trimwhitespace(countstring);
-            strcat(dhcpstring,ee);
-            char* dhcpstringsauber =trimwhitespace(dhcpstring);
-           // dhcp-string aufbauen end
            
            // pingstring aufbauen
            mk_net_str(dhcpstr,pingsrcip,4,'.',10);
@@ -1369,6 +1307,7 @@ int main(void)
            
            char key12[]="&othersideip=";
            strcat(pingstring,key12);
+           char otheripstr[20];
            strcat(pingstring,otheripstr);
  
            char* pingstringsauber =trimwhitespace(pingstring);
@@ -1380,7 +1319,8 @@ int main(void)
            
             client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),pingstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
 
-            
+           
+           
 //           client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),CurrentDataString,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
 
 //            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?data=13&x="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
@@ -1405,9 +1345,9 @@ int main(void)
          //continue;
          
          // current-routinen
-         if ((webstatus & (1<<DATAOK) )||(webstatus & (1<<CURRENTSEND)))
+         if ((webstatus & (1<<DATAOK))&&(webstatus & (1<<CURRENTSEND)) && (!(webstatus & (1<<CALLBACKWAIT))))
          {
-            
+            web_client_attempts++;
             webstatus &= ~(1<<CURRENTSEND);
             //lcd_clr_line(2);
             //OSZILO;
@@ -1417,12 +1357,77 @@ int main(void)
             
             start_web_client=0; // ping wieder ermoeglichen
  
+            // dhcp-string aufbauen
+            mk_net_str(dhcpstr,pingsrcip,4,'.',10);
+            urlencode(dhcpstr,urlvarstr);
             
-            // check
+            char key1[]="homeip=";
+            strcpy(dhcpstring,key1);
+            strcat(dhcpstring,urlvarstr);
+            
+            mk_net_str(dhcpstr,otherside_www_ip,4,'.',10);
+            char otheripstr[20];
+            urlencode(dhcpstr,otheripstr);
+            
+            char key2[]="&othersideip=";
+            strcat(dhcpstring,key2);
+            strcat(dhcpstring,otheripstr);
+            
+            char key3[]="&leistung=";
+            strcat(dhcpstring,key3);
+            
+            /*
+             char d[24];
+             dtostrf(leistung,10,2,d);
+             char* dd=(char*)trimwhitespace(d); // whitespace weg
+             strcat(dhcpstring,dd);
+             
+             lcd_gotoxy(13,1);
+             lcd_puts(dd);
+             
+             
+             char key4[]="&mittel=";
+             strcat(dhcpstring,key4);
+             dtostrf(impulsmittelwert,10,2,d);
+             char* mm=(char*)trimwhitespace(d); // whitespace weg
+             strcat(dhcpstring,mm);
+             */
+            char key5[]="&counter=";
+            strcat(dhcpstring,key5);
+            
+            char countstring[4];
+            itoa(web_client_sendok,countstring,10);
+            char* cc =(char*)trimwhitespace(countstring);
+            strcat(dhcpstring,cc);
+            
+            char key6[]="&callback=";
+            strcat(dhcpstring,key6);
+            itoa(browser_callback_count,countstring,10);
+            char* bb =(char*)trimwhitespace(countstring);
+            strcat(dhcpstring,bb);
+            
+            //web_client_attempts
+            char key7[]="&attempts=";
+            strcat(dhcpstring,key7);
+            itoa(web_client_attempts,countstring,10);
+            char*aa =(char*)trimwhitespace(countstring);
+            strcat(dhcpstring,aa);
+            
+            char key8[]="&senderr=";
+            strcat(dhcpstring,key8);
+            itoa(web_client_send_err,countstring,10);
+            char*ee =(char*)trimwhitespace(countstring);
+            strcat(dhcpstring,ee);
             char* dhcpstringsauber =trimwhitespace(dhcpstring);
-            
-//            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+            // dhcp-string aufbauen end
 
+            // check
+            
+            
+            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+            webstatus |= (1<<CALLBACKWAIT); // warten auf callback
+            
+            
             // Daten an strom.pl schicken
             
 //            client_browse_url((char*)PSTR("/cgi-bin/strom.pl?"),CurrentDataString,(char*)PSTR(WEBSERVER_VHOST),&strom_browserresult_callback);

@@ -76,6 +76,7 @@ volatile uint8_t stromimpulsindex=0;
 #define CURRENTSTOP                 1     // Bit fuer: Impulse ignorieren
 #define CURRENTWAIT                 2     // Bit fuer: Impulse wieder bearbeiten
 
+#define CALLBACKWAIT                 7     // Bit fuer: warten auf callback
 #define	IMPULSPIN                  0    // Pin fuer Anzeige Impuls
 
 // Fehlerbits
