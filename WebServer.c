@@ -73,6 +73,7 @@ static uint8_t otherside_www_ip[4];
 static uint8_t myip[4] = {192,168,1,209};
 static uint8_t gwip[4] = {192,168,1,1};
 static char dhcpstring[128]; // string fuer Daten zu dhcp.pl
+static char pingstring[64]; // string fuer ping-antwort zu dhcp.pl
 
 
 #define TRANS_NUM_GWMAC 1
@@ -1274,7 +1275,7 @@ int main(void)
             start_web_client=2;
             web_client_attempts++;
             
-            
+            // dhcp-string aufbauen
             mk_net_str(dhcpstr,pingsrcip,4,'.',10);
             urlencode(dhcpstr,urlvarstr);
             
@@ -1336,8 +1337,48 @@ int main(void)
             char*ee =(char*)trimwhitespace(countstring);
             strcat(dhcpstring,ee);
             char* dhcpstringsauber =trimwhitespace(dhcpstring);
+           // dhcp-string aufbauen end
+           
+           // pingstring aufbauen
+           mk_net_str(dhcpstr,pingsrcip,4,'.',10);
+           urlencode(dhcpstr,urlvarstr);
+
+           // ping callbackcount einsetzen
+           // erstes data ohne &
+           char key10[]="ping=";
+           strcpy(pingstring,key10);
+           char pingcountstring[4];
+           itoa(ping_callback_count,pingcountstring,10);
+           
+           //lcd_gotoxy(4,0);
+ //          lcd_putint(ping_callback_count);
+  //         lcd_putc(' ');
+ //          lcd_puts(pingcountstring);
+ //          lcd_putc('*');
+           char* pp =(char*)trimwhitespace(pingcountstring);
+           
+           strcat(pingstring,pp);
+
+           char key11[]="&homeip=";
+           strcat(pingstring,key11);
+           strcat(pingstring,urlvarstr);
+           
+           mk_net_str(dhcpstr,otherside_www_ip,4,'.',10);
+           char othersideipstr[20];
+           urlencode(dhcpstr,othersideipstr);
+           
+           char key12[]="&othersideip=";
+           strcat(pingstring,key12);
+           strcat(pingstring,otheripstr);
  
-            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+           char* pingstringsauber =trimwhitespace(pingstring);
+           //lcd_puts(pingstringsauber);
+           //lcd_putc('*');
+
+           
+           // pingstring aufbauen end
+           
+            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),pingstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
 
             
 //           client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),CurrentDataString,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
@@ -1348,7 +1389,7 @@ int main(void)
          
          }
          // reset after a delay to prevent permanent bouncing
-         if (sec>30 && start_web_client==2)
+         if (sec>10 && start_web_client==2)
          {
             start_web_client=0;
             sec=0;
@@ -1364,7 +1405,7 @@ int main(void)
          //continue;
          
          // current-routinen
-         if ((webstatus & (1<<DATAOK) )||(webstatus & (1<<CURRENTSEND))
+         if ((webstatus & (1<<DATAOK) )||(webstatus & (1<<CURRENTSEND)))
          {
             
             webstatus &= ~(1<<CURRENTSEND);
@@ -1380,7 +1421,7 @@ int main(void)
             // check
             char* dhcpstringsauber =trimwhitespace(dhcpstring);
             
-            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+//            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
 
             // Daten an strom.pl schicken
             
