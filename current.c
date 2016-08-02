@@ -4,7 +4,7 @@
  
 // current
 volatile static uint32_t             currentcount=0;     // Anzahl steps von timer2 zwischen 2 Impulsen. Schritt 10uS
-volatile uint32_t                    impulscount=0;     // Anzahl Impulse vom Stromzaehler fortlaufend
+volatile uint32_t                    impulscount=0;     // Anzahl Impulse vom Stromzaehler fortlaufend seit startup, Energiezaehler
 
 
 volatile static uint32_t            impulszeit=0;  // anzahl steps in INT1, wird nach div durch ANZAHLWERTE zu impulszeitsumme addiert.uebernommen
@@ -38,9 +38,9 @@ volatile uint8_t messungcounter;
 #define ANZAHLPAKETE                8 // Anzahl Pakete bis zur Uebertragung
 
 
-// Impulszaehler
+// Impulszaehler fuer Zaehlen der Impulse bei hoher frequenz(Leistung). Ev genauer als Zeitmessung zwischen Impulsen
 #define INTERVALL 100000 // 100ms Intervall fuer das Zaehlen der Impulse, 36 mWh
-// Zaehlen der Impulse bei hoher frequenz
+// 
 
 volatile static uint32_t intervallzeit=0; // in ISR von timer2 gezaehlt
 
@@ -55,7 +55,7 @@ volatile static uint32_t anzahlimpulsmittelwert=0;
 
 #define SENDINTERVALLCOUNT 20 // 20s
 
-#define SENDINTERVALL 5* SENDINTERVALLCOUNT//
+#define SENDINTERVALL 2* SENDINTERVALLCOUNT//
 
 
 // mittelwerte aufsummiert
@@ -142,7 +142,7 @@ void timer2(void) // Takt fuer Strommessung
 }
 
 
-
+#pragma mark ISR TIMER2_COMPA
 ISR(TIMER2_COMPA_vect) // CTC Timer2
 {
    OSZITOGG;
@@ -190,23 +190,24 @@ ISR (TIMER2_OVF_vect)
 }
 */
 
-
-ISR( INT1_vect ) // Neuer Impuls vom Zaehler ist angekommen
+#pragma mark ISR INT1
+ISR( INT1_vect ) // Neuer Impuls vom Zaehler ist angekommen. Entspricht 360 mWh
 {
-   //lcd_gotoxy(0,1);
+   //lcd_gotoxy(0,3);
 	//lcd_puts("I0:\0");
    //lcd_putint(impulscount);
    
-   stromimpulscounter++;
+   stromimpulscounter++; // Anzahl Impulse der laufenden Messung
    
 //   volatile uint8_t messungcounter;
    
-   if (webstatus & (1<<CURRENTSTOP)) // Webevent im Gang, Impulse ignorieren
+   if (webstatus & (1<<CURRENTSTOP)) // Webevent im Gang, Impulse ignorieren (nicht verwendet)
    {
       //lcd_puts("st\0");
       //return;
    }
    
+    // In strom_browserresult_callback gesetzt: Uebertragung ist fertig, beim naechsten Impuls Messungen wieder starten
    if (webstatus & (1<<CURRENTWAIT)) // Webevent fertig, neue Serie starten
    {
       //lcd_gotoxy(16,1);
@@ -220,13 +221,16 @@ ISR( INT1_vect ) // Neuer Impuls vom Zaehler ist angekommen
       return;
    }
    
-   impulscount++; // Gesamtzahl der Impulse vom Zaehler
+   impulscount++; // Gesamtzahl der Impulse vom Zaehler fortlaufend  seit startup: Energiezaehler
    
-   currentstatus |= (1<< IMPULSBIT); // Bit bearbeiten in WebServer
+   currentstatus |= (1<<IMPULSBIT);// Abstand bis zum naechsten Impuls messen: Bit bearbeiten in WebServer.
+   
+   // Zaehler fuer timerimpulse zuruecksetzen, alten Wert speichern fuer Mittelwertbildung in webserver.cb
    {
       //OSZILO;
+      
       impulszeit = currentcount;
-      currentcount =0;
+      currentcount =0;  // wird in TIMER2_COMPA_vect inkrementiert
       
       //PORTB ^= (1<<IMPULSPIN);
    }

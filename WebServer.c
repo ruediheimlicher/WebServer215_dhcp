@@ -72,7 +72,7 @@ static uint8_t otherside_www_ip[4];
 
 static uint8_t myip[4] = {192,168,1,209};
 static uint8_t gwip[4] = {192,168,1,1};
-static char dhcpstring[64]; // string fuer Daten zu dhcp.pl
+static char dhcpstring[128]; // string fuer Daten zu dhcp.pl
 
 
 #define TRANS_NUM_GWMAC 1
@@ -83,12 +83,18 @@ static char urlvarstr[30];
 static volatile uint8_t sec=0;      // counts up to 6 and goes back to zero
 static volatile uint8_t gsec=0;     // counts up beyond 6 sec
 static volatile uint16_t dhcpsec=0;  // zaehler fuer erneuten Check von otherside_ip
+static volatile uint8_t min=0;
+
 #define DHCPDELAY          300      // delay bis zum erneuten Check von otherside_ip
 static uint8_t buf[BUFFER_SIZE+1];
 static uint8_t start_web_client=0;
 static uint8_t pingsrcip[4];
 static uint8_t web_client_attempts=0;
 static uint8_t web_client_sendok=0;
+static uint8_t web_client_send_err=0;
+
+
+
 static volatile uint8_t cnt2step=0;
 static int8_t dns_state=0;
 static int8_t gw_arp_state=0;
@@ -123,13 +129,13 @@ static volatile uint8_t browser_callback_count=0;// Anzahl erfolgreiche Aufrufe 
 
 
 static volatile uint16_t timer0counter=0;
-static volatile uint16_t sekundencounter=0;
+volatile uint16_t sekundencounter=0;
 
 volatile uint16_t                   wattstunden=0;
 volatile uint16_t                   kilowattstunden=0;
 volatile uint32_t                   webleistung=0;
 
-volatile float leistung =1;
+volatile float leistung =1.0;
 float lastleistung =1;
 uint8_t lastcounter=0;
 volatile uint8_t  anzeigewert =0;
@@ -166,7 +172,7 @@ void initOSZI(void)
    OSZIPORT |= (1<<PULS); // HI
 }
 
-void timer0() // Analoganzeige Messinstrument
+void timer0(void) // Analoganzeige Messinstrument
 {
    //----------------------------------------------------
    // Set up timer 0
@@ -185,6 +191,15 @@ void timer0() // Analoganzeige Messinstrument
    //TCCR0A |= (1<<WGM02);   // PWM
    
    TCCR0A |= (1<<COM0A1);   // set OC0A at bottom, clear OC0A on compare match
+  /*
+   0   0   0  No clock source (Timer/Counter stopped)
+   0   0   1   clkI/O/(No prescaling)
+   0   1   0   clkI/O/8 (From prescaler)
+   0   1   1   clkI/O/64 (From prescaler)   
+   1   0   0   clkI/O/256 (From prescaler)
+   1   0   1   clkI/O/1024 (From prescaler)
+   */
+   // clk/1024
    TCCR0B |= 1<<CS02;
    TCCR0B |= 1<<CS00;
    
@@ -194,42 +209,50 @@ void timer0() // Analoganzeige Messinstrument
    
 }
 
-ISR(TIMER0_COMPA_vect)
+#pragma mark ISR TIMER0_COMPA
+ISR(TIMER0_COMPA_vect) // PWM fuer Analog-Anzeige.
 {
    
-   OCR0A = anzeigewert;
+   OCR0A = anzeigewert; // neuer Wert fuer Impulsdauer
    //OCR0A++;
-   PORTD &= ~(1<<ANALOGPIN); //LO
+   PORTD &= ~(1<<ANALOGPIN); //Ausgang LO
    
    
 }
 
-
-ISR(TIMER0_OVF_vect)
+#pragma mark ISR TIMER0_OVF
+ISR(TIMER0_OVF_vect) // Takt fuer PWM Analoganzeige
 {
    timer0counter++;
-   if (timer0counter== TIMER0_SEKUNDENTAKT)
+   if (timer0counter== TIMER0_SEKUNDENTAKT) // 50000,  Anz Overflows von timer0 bis 1 Sekunde
    {
       OSZITOGG;
-      sekundencounter++;
+      sekundencounter++; // verwendet fur min
+      if (sekundencounter%60 == 0)
+      {
+         min++;
+         lcd_gotoxy(8,0);
+         lcd_putint(min);
+
+      }
       timer0counter=0;
       //lcd_gotoxy(15,0);
       //lcd_putint(timer0counter);
    }
-   PORTD |= (1<<ANALOGPIN);
+   PORTD |= (1<<ANALOGPIN);//Ausgang HI
 }
 
-
-// timer interrupt, called automatically every second
+#pragma mark ISR TIMER1_COMPA
+// eth_dhcp: timer interrupt, called automatically every second
 ISR(TIMER1_COMPA_vect)
 {
    sec++;
    gsec++;
    
-   if (sec>5)
+   if (sec>5) // refresh, DHCP erfordert pertiodischen refresh
    {
       sec=0;
-      dhcp_6sec_tick();
+      dhcp_6sec_tick(); // inkkrementiert dhcp_6sec_cnt
    }
    
    dhcpsec++;
@@ -237,10 +260,32 @@ ISR(TIMER1_COMPA_vect)
    {
       dhcpsec=0;
    }
-   lcd_gotoxy(13,3);
-   lcd_putint(dhcpsec);
-   lcd_gotoxy(17,3);
-   lcd_putint(sec);
+   
+   sekundencounter++; // verwendet fur min
+   if (sekundencounter%60 == 0)
+   {
+      min++;
+      lcd_gotoxy(0,0);
+      lcd_putint(min);
+      if (min == 3)
+      {
+         min=0;
+         if (!(webstatus & (1<<CURRENTSEND))) // noch nicht gesetzt
+         {
+            webstatus |= (1<<CURRENTSEND);
+         }
+      }
+      
+   }
+//   lcd_gotoxy(0,0);
+//   lcd_putint(sekundencounter);
+//   lcd_putc(' ');
+//   lcd_putint(min);
+
+   //lcd_gotoxy(13,3);
+   //lcd_putint(dhcpsec);
+   //lcd_gotoxy(17,3);
+   //lcd_putint(sec);
 
 }
 
@@ -300,16 +345,21 @@ uint16_t print_webpage(uint8_t *buf)
       plen=fill_tcp_data_p(buf,plen,PSTR(" (0=no error)\n"));
       return(plen);
    }
-   plen=fill_tcp_data_p(buf,plen,PSTR("Home: Number of data uploads started by ping: web_client_attempts: "));
+   plen=fill_tcp_data_p(buf,plen,PSTR("Number of data uploads: web_client_attempts: "));
    // convert number to string:
    itoa(web_client_attempts,vstr,10);
    plen=fill_tcp_data(buf,plen,vstr);
    
-   plen=fill_tcp_data_p(buf,plen,PSTR("\nNumber successful data uploads to web: web_client_sendok: "));
+   plen=fill_tcp_data_p(buf,plen,PSTR("\nNumber of successful data uploads to web: web_client_sendok: "));
    // convert number to string:
    itoa(web_client_sendok,vstr,10);
    plen=fill_tcp_data(buf,plen,vstr);
-   
+
+   plen=fill_tcp_data_p(buf,plen,PSTR("\nNumber of errors to uploads to web: web_client_send_err: "));
+   // convert number to string:
+   itoa(web_client_send_err,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+
    
    //otherside_www_ip
    plen=fill_tcp_data_p(buf,plen,PSTR("\notherside_www_ip:\n "));
@@ -375,9 +425,9 @@ uint16_t print_webpage(uint8_t *buf)
    plen=fill_tcp_data_p(buf,plen,PSTR("\nbrowser_callback_count:\t "));
    itoa(browser_callback_count,vstr,10);
    plen=fill_tcp_data(buf,plen,vstr);
-   plen=fill_tcp_data_p(buf,plen,PSTR("\t*"));
+   plen=fill_tcp_data_p(buf,plen,PSTR("\n*"));
    
-   plen=fill_tcp_data_p(buf,plen,(char*)WEBSERVER_VHOST);
+   plen=fill_tcp_data(buf,plen,(char*)WEBSERVER_VHOST);
    plen=fill_tcp_data_p(buf,plen,PSTR("*"));
    
    // gw_arp_state
@@ -389,10 +439,15 @@ uint16_t print_webpage(uint8_t *buf)
    itoa(dns_state,vstr,10);
    plen=fill_tcp_data(buf,plen,vstr);
    // start_web_client
-   plen=fill_tcp_data_p(buf,plen,PSTR("\tstart_web_client:\t "));
+   plen=fill_tcp_data_p(buf,plen,PSTR("\tstart_web_client:\n "));
    itoa(start_web_client,vstr,10);
    plen=fill_tcp_data(buf,plen,vstr);
    
+   // Leistung
+   plen=fill_tcp_data_p(buf,plen,PSTR("\nleistung:\t "));
+   itoa(leistung,vstr,10);
+   plen=fill_tcp_data(buf,plen,vstr);
+
    
    // plen=fill_tcp_data_p(buf,plen,PSTR("\ncheck result: <a href=http://tuxgraphics.org/cgi-bin/upld>http://tuxgraphics.org/cgi-bin/upld</a>"));
    
@@ -493,13 +548,39 @@ void ping_callback(uint8_t *ip)
 }
 
 // the __attribute__((unused)) is a gcc compiler directive to avoid warnings about unsed variables.
-void browserresult_callback(uint16_t webstatuscode,uint16_t datapos __attribute__((unused)), uint16_t len __attribute__((unused)))
+void browserresult_callback(uint16_t webstatuscode,uint16_t datapos , uint16_t len )
 {
+   lcd_gotoxy(4,3);
+   lcd_putint(web_client_attempts);
+
+   lcd_gotoxy(8,3);
+   lcd_putint(web_client_sendok);
+
+   lcd_gotoxy(12,3);
+   lcd_putint(webstatuscode);
+   lcd_putc(' ');
+   lcd_putint(datapos);
+
    browser_callback_count++;
    if (webstatuscode==200)
    {
+      lcd_gotoxy(0,3);
+      lcd_puts("   \0");
+      lcd_gotoxy(0,3);
+      lcd_puts("bOK\0");
+
       web_client_sendok++;
       LEDOFF;
+   }
+   else
+   {
+      /*
+      lcd_gotoxy(0,3);
+      lcd_puts("   \0");
+      lcd_gotoxy(0,3);
+      lcd_puts("bEr\0");
+       */
+      web_client_send_err++;
    }
 }
 
@@ -507,6 +588,12 @@ void browserresult_callback(uint16_t webstatuscode,uint16_t datapos __attribute_
 void arpresolver_result_callback(uint8_t *ip __attribute__((unused)),uint8_t transaction_number,uint8_t *mac)
 {
    uint8_t i=0;
+   lcd_gotoxy(0,3);
+   lcd_puts("   \0");
+   lcd_gotoxy(0,3);
+   lcd_puts("rOK\0");
+   web_client_sendok++;
+
    if (transaction_number==TRANS_NUM_GWMAC)
    {
       // copy mac address over:
@@ -515,6 +602,109 @@ void arpresolver_result_callback(uint8_t *ip __attribute__((unused)),uint8_t tra
 }
 
 // end von test_www_client
+
+// callbacks von current
+
+void strom_browserresult_callback(uint8_t statuscode,uint16_t datapos)
+{
+   // datapos is not used in this example
+
+   if (statuscode==0)
+   {
+      
+      lcd_gotoxy(12,3);
+      lcd_puts("           \0");
+      lcd_gotoxy(12,3);
+      lcd_putint(statuscode);
+      lcd_puts("s cb OK \0");
+      
+      // lcd_gotoxy(19,0);
+      // lcd_putc(' ');
+      lcd_gotoxy(19,0);
+      lcd_putc('+');
+      
+      webstatus &= ~(1<<DATASEND); // Datasend auftrag ok
+      
+      webstatus &= ~(1<<DATAPEND); // Quittung fuer callback-erhalt
+      
+      // Messungen wieder starten
+      
+      webstatus &= ~(1<<CURRENTSTOP); // Messung wieder starten
+      webstatus |= (1<<CURRENTWAIT); // Beim naechsten Impuls Messungen wieder starten
+      sei();
+      
+      web_client_sendok++;
+      
+   }
+   else
+   {
+      
+      lcd_gotoxy(0,3);
+      lcd_puts("           \0");
+      lcd_gotoxy(0,3);
+      lcd_puts("b cb err \0");
+      lcd_puthex(statuscode);
+      
+      lcd_gotoxy(19,0);
+      lcd_putc(' ');
+      lcd_gotoxy(19,0);
+      lcd_putc('-');
+   }
+}
+
+void home_browserresult_callback(uint8_t statuscode,uint16_t datapos)
+{
+   // datapos is not used in this example
+   if (statuscode==0)
+   {
+      lcd_gotoxy(0,0);
+      lcd_puts("        \0");
+      lcd_gotoxy(0,0);
+      lcd_puts("h cb OK\0");
+      web_client_sendok++;
+      //				sei();
+      
+   }
+   else
+   {
+      lcd_gotoxy(0,0);
+      lcd_puts("        \0");
+      lcd_gotoxy(0,0);
+      lcd_puts("h cb err\0");
+      lcd_puthex(statuscode);
+      
+   }
+}
+
+
+
+void alarm_browserresult_callback(uint8_t statuscode,uint16_t datapos)
+{
+   // datapos is not used in this example
+   if (statuscode==0)
+   {
+      
+      lcd_gotoxy(0,0);
+      lcd_puts("        \0");
+      lcd_gotoxy(0,0);
+      lcd_puts("a cb OK\0");
+      
+      web_client_sendok++;
+      //				sei();
+      
+   }
+   else
+   {
+      lcd_gotoxy(0,0);
+      lcd_puts("         \0");
+      lcd_gotoxy(0,0);
+      lcd_puts("a cb err\0");
+      lcd_puthex(statuscode);
+      
+   }
+}
+
+
 
 int main(void)
 {
@@ -601,6 +791,7 @@ int main(void)
    ************* End DHCP Handling *********** */
    
    //init the web server ethernet/ip layer:
+   
    init_udp_or_www_server(mymac,myip);
    www_server_port(MYWWWPORT);
 
@@ -616,8 +807,8 @@ int main(void)
    lcd_gotoxy(0,1);
    
    mk_net_str(str,myip,4,'.',10);
-   lcd_clr_line(1);
-   lcd_puts(str);
+  // lcd_clr_line(1);
+ //  lcd_puts(str);
    
    /*
     char versionnummer[7];
@@ -628,13 +819,16 @@ int main(void)
    _delay_ms(1600);
 //   initOSZI();
   
-   // current defs
+   // current init
+   InitCurrent();
+   timer2();
    static volatile uint8_t paketcounter=0;
    
    uint8_t i=0;
 
    // ***** end eigene Declarations ***********
-   
+   lcd_clr_line(0);
+   lcd_clr_line(1);
    while(1)
    {
 #pragma mark current routines
@@ -647,7 +841,11 @@ int main(void)
          messungcounter ++;
          currentstatus++; // ein Wert mehr gemessen
          
-         impulszeitsumme += impulszeit/ANZAHLWERTE;      // Wert aufsummieren
+         // alter wert
+         //lcd_gotoxy(0,0);
+         //lcd_putint16(impulszeit/100);
+         
+         impulszeitsumme += impulszeit/ANZAHLWERTE;      // letzter stand von currentcount. Wert aufsummieren fuer Mittelwert
          
          if (filtercount == 0) // neues Paket
          {
@@ -655,37 +853,33 @@ int main(void)
          }
          else
          {
-            if (filtercount < filterfaktor)
+            if (filtercount < filterfaktor) // filterlaenge, anzahl werte fuer laufende Mittelwertberechnung
             {
                filtermittelwert = ((filtercount-1)* filtermittelwert + impulszeit)/filtercount;
-               
                //lcd_gotoxy(19,1);
                //lcd_putc('a');
-               
             }
             else
             {
+               // neuen Mittelwert bilden:
                filtermittelwert = ((filterfaktor-1)* filtermittelwert + impulszeit)/filterfaktor;
-               
-               
                //lcd_gotoxy(19,1);
                //lcd_putc('f');
-               
             }
             
          }
          
          char filterstromstring[8];
          filtercount++;
-         /*
-          lcd_gotoxy(0,0);
-          lcd_putint16(impulszeit/100);
-          lcd_gotoxy(10,0);
-          lcd_putint16(filtermittelwert/100);
-          lcd_gotoxy(10,1);
-          lcd_putint(filtercount);
-          lcd_putc('*');
-          
+         
+//         lcd_putint12(impulszeit/100);
+         
+//         lcd_gotoxy(5,0);
+//          lcd_putint12(filtermittelwert/100);
+//          lcd_gotoxy(10,0);
+ //         lcd_putint(filtercount);
+          //lcd_putc('*');
+          /*
           dtostrf(filtermittelwert,5,1,filterstromstring);
           //lcd_puts(filterstromstring);
           */
@@ -698,11 +892,10 @@ int main(void)
             //dtostrf(filtermittelwert,5,1,filterstromstring);
             //lcd_puts(filterstromstring);
          }
-         
+        
          
          if ((currentstatus & 0x0F) == ANZAHLWERTE)      // genuegend Werte
          {
-            
             lcd_gotoxy(19,0);
             lcd_putc(' ');
             //lcd_putc(' ');
@@ -714,8 +907,8 @@ int main(void)
             //lcd_gotoxy(0,1);
             //lcd_puts("    \0");
             
-            //lcd_gotoxy(0,1);
-            //lcd_putint(messungcounter);
+            lcd_gotoxy(16,0);
+            lcd_putint(messungcounter); // anz Messungen seit startup
             
             paketcounter++;
             
@@ -757,16 +950,16 @@ int main(void)
             
             //char impstring[12];
             //dtostrf(impulsmittelwert,8,2,impstring);
-            lcd_gotoxy(0,0);
+            lcd_gotoxy(0,1);
             //lcd_puts(impstring);
             //lcd_putc(':');
             lcd_putint16(impulsmittelwert);
             lcd_putc('*');
             
             
-            // lcd_gotoxy(5,0);
-            // lcd_putint(sendintervallzeit);
-            // lcd_putc('$');
+             lcd_gotoxy(9,1);
+             lcd_putint(sendintervallzeit);
+             lcd_putc('*');
             
             /*
              Impulsdauer: impulsmittelwert * TIMERIMPULSDAUER (10us)
@@ -786,8 +979,8 @@ int main(void)
                webleistung = (uint32_t)360.0/impulsmittelwert*100000.0;
                
                
-               lcd_gotoxy(0,1);
-               lcd_putint16(webleistung);
+               lcd_gotoxy(0,2);
+               lcd_putint12(webleistung);
                lcd_putc('*');
             }
             
@@ -857,7 +1050,7 @@ int main(void)
              */
             
             // if (paketcounter  >= ANZAHLPAKETE)
-            if (webstatus & (1<<DATALOOP))
+            if (webstatus & (1<<DATALOOP)) // in TIMER2_COMPA_vect gesetzt
             {
                
                webstatus &= ~(1<<DATALOOP);
@@ -871,8 +1064,11 @@ int main(void)
                
                
                //dtostrf(leistung,5,1,stromstring); // 800us
+               
+               // double in String umwandeln
                dtostrf(webleistung,10,0,stromstring); // 800us
                
+               //filtermittelwert
                
                paketcounter=0;
                
@@ -882,9 +1078,13 @@ int main(void)
                   tempmitte+= stromimpulsmittelwertarray[i];
                }
                tempmitte/= 4;
-               lcd_gotoxy(14,0);
-               lcd_putc('m');
-               lcd_putint12(tempmitte);
+               char m[24];
+               dtostrf(tempmitte,10,3,m);
+               char*mm = trimwhitespace(m);
+               //lcd_gotoxy(8,0);
+               //lcd_putc('m');
+               //lcd_puts(mm);
+               //lcd_putint16(tempmitte);
                //         filtercount =0;
                
                //if (TEST)
@@ -895,7 +1095,7 @@ int main(void)
                   //OSZILO;
                   
                   
-                  lcd_gotoxy(9,1);
+                  lcd_gotoxy(9,2);
                   lcd_putint(wattstunden/1000);
                   lcd_putc('.');
                   lcd_putint3(wattstunden);
@@ -909,7 +1109,7 @@ int main(void)
                {
                   // stromstring bilden
                   char key1[]="pw=\0";
-                  char sstr[]="Pong\0";
+                  char sstr[]="po\0";
                   
                   strcpy(CurrentDataString,key1);
                   strcat(CurrentDataString,sstr);
@@ -920,28 +1120,30 @@ int main(void)
                   //      urlencode(stromstring,webstromstring);
                   
                   strcpy(webstromstring,stromstring);
-                  lcd_gotoxy(0,2);
+                  //lcd_gotoxy(0,3);
                   //lcd_puts(stromstring);
                   //lcd_putc('-');
                   //lcd_puts(webstromstring);
                   //lcd_putc('-');
                   
                   char* tempstromstring = (char*)trimwhitespace(webstromstring);
-                  lcd_puts(tempstromstring);
+                  //lcd_puts(tempstromstring);
                   //lcd_putc('$');
                   
                   //strcat(CurrentDataString,stromstring);
                   strcat(CurrentDataString,tempstromstring);
+                  //lcd_puts(CurrentDataString);
                   
                   /*
                    // kontolle
                    char substr[20];
                    uint8_t l=strlen(CurrentDataString);
                    strncpy(substr, CurrentDataString+8, (l));
-                   lcd_gotoxy(0,1);
+                  
+                     lcd_gotoxy(0,2);
                    lcd_puts(substr);
                    _delay_ms(10);
-                   */
+                  */
                }
                
                
@@ -967,11 +1169,12 @@ int main(void)
             
             // if (TEST)
             {
-               lcd_gotoxy(9,0);
-               lcd_putint(anzeigewert);
+               //lcd_gotoxy(9,0);
+               //lcd_putint(anzeigewert);
             }
             
-            webstatus |= (1<<CURRENTSEND);
+//            webstatus |= (1<<CURRENTSEND);
+            
             
          } // genuegend Werte
          else
@@ -990,7 +1193,7 @@ int main(void)
       //**    End Current-Routinen*************************
       
       
-#pragma mark PacketReceive
+#pragma mark packetloop
       // handle ping and wait for a tcp packet
       plen=enc28j60PacketReceive(BUFFER_SIZE, buf);
       dat_p=packetloop_arp_icmp_tcp(buf,plen);
@@ -1035,10 +1238,12 @@ int main(void)
             dns_state=2;
             dnslkup_get_ip(otherside_www_ip);
             
-            lcd_gotoxy(0,1);
+            //lcd_gotoxy(0,1);
             mk_net_str(str,otherside_www_ip,4,'.',10);
-            lcd_clr_line(1);
-            lcd_puts(str);
+            //lcd_clr_line(2);
+            //lcd_puts(str);
+            //_delay_ms(1600);
+            //lcd_clr_line(2);
 
          }
          if (dns_state!=2)
@@ -1054,8 +1259,9 @@ int main(void)
          }
          
          //----------
-         if (start_web_client==1) // in ping-callback gesetzt
+         if ((start_web_client==1)||(webstatus & (1<<CURRENTSEND))) // web_client in ping-callback gesetzt
          {
+            webstatus &= ~(1<<CURRENTSEND);
             sec=0;
             start_web_client=2;
             web_client_attempts++;
@@ -1064,52 +1270,68 @@ int main(void)
             mk_net_str(dhcpstr,pingsrcip,4,'.',10);
             urlencode(dhcpstr,urlvarstr);
             
+            char key1[]="homeip=";
+            strcpy(dhcpstring,key1);
+            strcat(dhcpstring,urlvarstr);
+            
             mk_net_str(dhcpstr,otherside_www_ip,4,'.',10);
             char otheripstr[20];
             urlencode(dhcpstr,otheripstr);
             
-            
-            
-            //lcd_gotoxy(0,2);
-            //lcd_puts(urlvarstr);
-           // strcpy((char*)uploadadresse,WEBSERVER_VHOST);
-           // strcat((char*)uploadadresse,"/cgi-bin/hello.pl");
-           // strcat((char*)uploadadresse,urlvarstr);
-            /*
-            // webserver home:
-             
-             char key1[]="pw=";
-             char sstr[]="Pong";
-
-             strcpy(HeizungDataString,key1);
-             strcat(HeizungDataString,sstr);
-             
-             strcpy(HeizungDataString,"&d0="); //Bit 0-4: Stunde, 5 bit     Bit 5-7: Raumnummer
-             
-             itoa(inbuffer[0],d,16);
-             strcat(HeizungDataString,d);
-             
-             strcat(HeizungDataString,"&d1="); //
-             itoa(inbuffer[1],d,16);
-             strcat(HeizungDataString,d);
-
-           // client_browse_url((char*)PSTR("/cgi-bin/home.pl?"),HeizungDataString,(char*)PSTR(WEBSERVER_VHOST),&home_browserresult_callback);
-
-            */
-            //PSTR("/cgi-bin/hello.pl"),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac;
-            //client_browse_url(PSTR("/cgi-bin/upld?pw=sec&pingIP="),urlvarstr,PSTR(TUX_WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
-            
-            char key1[]="homeip=";
             char key2[]="&othersideip=";
-
-            strcpy(dhcpstring,key1);
-            strcat(dhcpstring,urlvarstr);
-            
             strcat(dhcpstring,key2);
             strcat(dhcpstring,otheripstr);
+ 
+            char key3[]="&leistung=";
+            strcat(dhcpstring,key3);
+            
+            /*
+            char d[24];
+            dtostrf(leistung,10,2,d);
+            char* dd=(char*)trimwhitespace(d); // whitespace weg
+            strcat(dhcpstring,dd);
+            lcd_gotoxy(13,1);
+            lcd_puts(dd);
             
             
-            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstring,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+            char key4[]="&mittel=";
+            strcat(dhcpstring,key4);
+            dtostrf(impulsmittelwert,10,2,d);
+            char* mm=(char*)trimwhitespace(d); // whitespace weg
+            strcat(dhcpstring,mm);
+            */
+            char key5[]="&counter=";
+            strcat(dhcpstring,key5);
+            
+            char countstring[4];
+            itoa(web_client_sendok,countstring,10);
+            char* cc =(char*)trimwhitespace(countstring);
+            strcat(dhcpstring,cc);
+            
+            char key6[]="&callback=";
+            strcat(dhcpstring,key6);
+            itoa(browser_callback_count,countstring,10);
+            char* bb =(char*)trimwhitespace(countstring);
+            strcat(dhcpstring,bb);
+            
+             //web_client_attempts
+            char key7[]="&attempts=";
+            strcat(dhcpstring,key7);
+            itoa(web_client_attempts,countstring,10);
+            char*aa =(char*)trimwhitespace(countstring);
+            strcat(dhcpstring,aa);
+
+            char key8[]="&senderr=";
+            strcat(dhcpstring,key8);
+            itoa(web_client_send_err,countstring,10);
+            char*ee =(char*)trimwhitespace(countstring);
+            strcat(dhcpstring,ee);
+            char* dhcpstringsauber =trimwhitespace(dhcpstring);
+ 
+            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+
+            
+//           client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),CurrentDataString,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
 
 //            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?data=13&x="),urlvarstr,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
             
@@ -1130,8 +1352,53 @@ int main(void)
          // check for incomming messages not processed
          // as part of packetloop_arp_icmp_tcp, e.g udp messages
          udp_client_check_for_dns_answer(buf,plen);
+         //continue;
+         
+         // current-routinen
+         if (webstatus & (1<<DATAOK) )
+         {
+            //lcd_clr_line(2);
+            //OSZILO;
+            
+            // start_web_client=2;
+            //strcat("pw=Pong&strom=360\0",(char*)teststring);
+            
+            
+            start_web_client=0; // ping wieder ermoeglichen
+ 
+            
+            // check
+            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstring,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+
+            // Daten an strom.pl schicken
+            
+//            client_browse_url((char*)PSTR("/cgi-bin/strom.pl?"),CurrentDataString,(char*)PSTR(WEBSERVER_VHOST),&strom_browserresult_callback);
+            
+ //           client_browse_url((char*)PSTR("/cgi-bin/strom.pl?"),CurrentDataString,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+
+            sendWebCount++;
+           // lcd_gotoxy(0,3);
+           // lcd_putint(sendWebCount);
+            webstatus &= ~(1<<DATAOK); // client_browse nur einmal
+            webstatus |= (1<<DATAPEND);
+            
+            lcd_gotoxy(19,0);
+            lcd_putc('>');
+            
+            
+            //OSZIHI;
+         }
+         
          continue;
+
+         
+         
+         
       }
+      
+      
+#pragma mark GET-Routinen
+      
       
       if (strncmp("GET ",(char *)&(buf[dat_p]),4)!=0)
       {

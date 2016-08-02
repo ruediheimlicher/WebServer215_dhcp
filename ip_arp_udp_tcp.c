@@ -1239,7 +1239,7 @@ uint8_t www_client_internal_result_callback(uint8_t fd, uint8_t statuscode, uint
 //
 // Declare a callback function: void browserresult(uint8_t webstatuscode,uint16_t datapos,uint16_t len){...your code}
 // The variable datapos is the index in the packet buffer.
-// Now call client_browser_url:
+// Now call client_browse_url:
 // client_browser_url(PSTR("/cgi-bin/checkip"),NULL,"tuxgraphics.org",&browserresult,other_side_ip,gwmac);
 // urlbuf_varpart is a pointer to a string buffer that contains the second
 // non constant part of the url. You must keep this buffer allocated until the
@@ -1395,7 +1395,8 @@ uint16_t packetloop_arp_icmp_tcp(uint8_t *buf,uint16_t plen)
       // workaround to pass pointer to www_client_internal..
       bufptr=buf;
 #endif // WWW_client
-      if (check_ip_message_is_from(buf,tcp_otherside_ip)==0){
+      if (check_ip_message_is_from(buf,tcp_otherside_ip)==0)
+      {
          return(0);
       }
       // if we get a reset:

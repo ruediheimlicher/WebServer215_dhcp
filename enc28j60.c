@@ -349,7 +349,8 @@ void enc28j60PacketSend(uint16_t len, uint8_t* packet)
 // just probe if there might be a packet
 uint8_t enc28j60hasRxPkt(void)
 {
-   if( enc28j60Read(EPKTCNT) ==0 ){
+   if( enc28j60Read(EPKTCNT) ==0 )
+   {
       return(0);
    }
    return(1);
@@ -391,7 +392,8 @@ uint16_t enc28j60PacketReceive(uint16_t maxlen, uint8_t* packet)
    // check CRC and symbol errors (see datasheet page 44, table 7-3):
    // The ERXFCON.CRCEN is set by default. Normally we should not
    // need to check this.
-   if ((rxstat & 0x80)==0){
+   if ((rxstat & 0x80)==0)
+   {
       // invalid
       len=0;
    }else{

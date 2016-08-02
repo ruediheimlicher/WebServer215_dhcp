@@ -70,7 +70,8 @@ static uint16_t dhcp_opt_leasetime_minutes=0;
 // Lease time renewal and time keeping.
 // you must call this function every 6 seconds. It is save
 // to do this from interrupt
-void dhcp_6sec_tick(void){
+void dhcp_6sec_tick(void)
+{
    dhcp_6sec_cnt++;
 }
 
@@ -457,26 +458,33 @@ void dhcp_get_my_ip(uint8_t *assigend_yiaddr,uint8_t *assigend_netmask, uint8_t 
 // We don't need to expect changing IP addresses. We can stick
 // to the IP that we got once. The server has really no power to
 // do anything about that.
-uint16_t packetloop_dhcp_renewhandler(uint8_t *buf,uint16_t plen){
-   if (dhcp_6sec_cnt> 8){  // we let it run a bit faster than once every minute because it is better this expires too early than too late
+uint16_t packetloop_dhcp_renewhandler(uint8_t *buf,uint16_t plen)
+{
+   if (dhcp_6sec_cnt> 8)
+   {  // we let it run a bit faster than once every minute because it is better this expires too early than too late
       dhcp_6sec_cnt=0;
       // count down unless the lease was infinite
-      if (dhcp_opt_leasetime_minutes < 0xffff && dhcp_opt_leasetime_minutes>1){
+      if (dhcp_opt_leasetime_minutes < 0xffff && dhcp_opt_leasetime_minutes>1)
+      {
          dhcp_opt_leasetime_minutes--;
       }
    }
-   if (plen ==0 && dhcp_opt_leasetime_minutes < 3){
+   if (plen ==0 && dhcp_opt_leasetime_minutes < 3)
+   {
       if (!enc28j60linkup()) return(plen); // do nothing if link is down
       dhcp_tid++;
       send_dhcp_renew_request(buf,dhcp_tid,dhcp_yiaddr);
       dhcp_opt_leasetime_minutes=5; // repeat in two minutes if no answer
       return(0);
    }
-   if (plen && is_dhcp_msg_for_me(buf,plen,dhcp_tid)){
+   if (plen && is_dhcp_msg_for_me(buf,plen,dhcp_tid))
+   {
       // we check the dhcp_renew_tid because if
-      if (dhcp_get_message_type(buf,plen)==5){ // DHCPACK =5
+      if (dhcp_get_message_type(buf,plen)==5)
+      { // DHCPACK =5
          // success, DHCPACK, we have the IP
-         if (dhcp_is_renew_tid(buf,plen)){
+         if (dhcp_is_renew_tid(buf,plen))
+         {
             dhcp_option_parser(buf,plen); // get new lease time, it will as well GW and netmask but those should not change
          }
       }

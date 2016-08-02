@@ -16,7 +16,7 @@
 // to test the state of the LED
 #define LEDISOFF PORTB&(1<<PORTB1)
 // packet buffer
-#define BUFFER_SIZE 650
+#define BUFFER_SIZE 800
 
 
 

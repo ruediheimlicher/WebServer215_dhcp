@@ -59,70 +59,74 @@ extern uint16_t packetloop_dhcp_renewhandler(uint8_t *buf,uint16_t plen);
  static uint8_t buf[BUFFER_SIZE+1];
  //
  // timer interrupt, called automatically every second
- ISR(TIMER1_COMPA_vect){
- sec++;
- if (sec>5)
+ ISR(TIMER1_COMPA_vect)
  {
- sec=0;
- dhcp_6sec_tick();
- }
+   sec++;
+   if (sec>5)
+   {
+      sec=0;
+      dhcp_6sec_tick();
+   }
  }
  
- // Generate an interrup about ever 1s form the 12.5MHz system clock
+ // Generate an interrup about every 1s from the 12.5MHz system clock
  // Since we have that 1024 prescaler we do not really generate a second
  // (1.00000256000655361677s)
  void timer_init(void)
  {
- // write high byte first for 16 bit register access:
- TCNT1H=0;  // set counter to zero
- TCNT1L=0;
- // Mode 4 table 14-4 page 132. CTC mode and top in OCR1A
- // WGM13=0, WGM12=1, WGM11=0, WGM10=0
- TCCR1A=(0<<COM1B1)|(0<<COM1B0)|(0<<WGM11);
- TCCR1B=(1<<CS12)|(1<<CS10)|(1<<WGM12)|(0<<WGM13); // crystal clock/1024
- 
- // At what value to cause interrupt. You can use this for calibration
- // of the clock. Theoretical value for 12.5MHz: 12207=0x2f and 0xaf
- OCR1AH=0x2f;
- OCR1AL=0xaf;
- // interrupt mask bit:
- TIMSK1 = (1 << OCIE1A);
+    // write high byte first for 16 bit register access:
+    TCNT1H=0;  // set counter to zero
+    TCNT1L=0;
+    // Mode 4 table 14-4 page 132. CTC mode and top in OCR1A
+    // WGM13=0, WGM12=1, WGM11=0, WGM10=0
+    TCCR1A=(0<<COM1B1)|(0<<COM1B0)|(0<<WGM11);
+    TCCR1B=(1<<CS12)|(1<<CS10)|(1<<WGM12)|(0<<WGM13); // crystal clock/1024
+    
+    // At what value to cause interrupt. You can use this for calibration
+    // of the clock. Theoretical value for 12.5MHz: 12207=0x2f and 0xaf
+    OCR1AH=0x2f;
+    OCR1AL=0xaf;
+    // interrupt mask bit:
+    TIMSK1 = (1 << OCIE1A);
  }
  
  //in your main() function you would put this:
  //
- int main(void){
- uint16_t plen;
- uint16_t dat_p;
- uint8_t rval;
- // ...
+ int main(void)
+ {
+    uint16_t plen;
+    uint16_t dat_p;
+    uint8_t rval;
+    // ...
+    
+    timer_init();
+    sei(); // interrupt enable
+    // DHCP handling. Get the initial IP
+    rval=0;
+    init_mac(mymac);
+    while(rval==0)
+    {
+      plen=enc28j60PacketReceive(BUFFER_SIZE, buf);
+      buf[BUFFER_SIZE]='\0';
+      rval=packetloop_dhcp_initial_ip_assignment(buf,plen,mymac[5]);
+    }
+    dhcp_get_my_ip(myip,NULL,NULL); // we just want the IP, as a web server we do technically not need mask and gateway. Those files are only needed for a client.
+    
+    // ... in the main loop your put:
+    
+    while(1)
+    {
  
- timer_init();
- sei(); // interrupt enable
- // DHCP handling. Get the initial IP
- rval=0;
- init_mac(mymac);
- while(rval==0){
- plen=enc28j60PacketReceive(BUFFER_SIZE, buf);
- buf[BUFFER_SIZE]='\0';
- rval=packetloop_dhcp_initial_ip_assignment(buf,plen,mymac[5]);
- }
- dhcp_get_my_ip(myip,NULL,NULL); // we just want the IP, as a web server we do technically not need mask and gateway. Those fiels are only needed for a client.
- 
- // ... in the main loop your put:
- 
- while(1){
- 
- // handle ping and wait for a tcp packet
- plen=enc28j60PacketReceive(BUFFER_SIZE, buf);
- buf[BUFFER_SIZE]='\0'; // http is an ascii protocol. Make sure we have a string terminator.
- // DHCP renew IP if needed:
- plen=packetloop_dhcp_renewhandler(buf,plen); // for this to work you have to call dhcp_6sec_tick() every 6 sec
- dat_p=packetloop_icmp_tcp(buf,plen);
- 
- // ... your program continues here in the main loop and
- // ... you can handle UDP or TCP (e.g http data).
- }
+       // handle ping and wait for a tcp packet
+       plen=enc28j60PacketReceive(BUFFER_SIZE, buf);
+       buf[BUFFER_SIZE]='\0'; // http is an ascii protocol. Make sure we have a string terminator.
+       // DHCP renew IP if needed:
+       plen=packetloop_dhcp_renewhandler(buf,plen); // for this to work you have to call dhcp_6sec_tick() every 6 sec
+       dat_p=packetloop_icmp_tcp(buf,plen);
+       
+       // ... your program continues here in the main loop and
+       // ... you can handle UDP or TCP (e.g http data).
+    }
  }
  */
 //=== end of example on how to use this interface
