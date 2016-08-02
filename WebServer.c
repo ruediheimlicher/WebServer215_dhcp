@@ -267,7 +267,7 @@ ISR(TIMER1_COMPA_vect)
       min++;
       lcd_gotoxy(0,0);
       lcd_putint(min);
-      if (min == 3)
+      if (min == 2)
       {
          min=0;
          if (!(webstatus & (1<<CURRENTSEND))) // noch nicht gesetzt
@@ -537,6 +537,11 @@ void ping_callback(uint8_t *ip)
    // trigger only first time in case we get many ping in a row:
 //   if (start_web_client==0)
    {
+      lcd_gotoxy(0,3);
+      lcd_puts("   \0");
+      lcd_gotoxy(0,3);
+      lcd_puts("pOK\0");
+
       start_web_client=1;
       // save IP from where the ping came:
       while(i<4)
@@ -1259,9 +1264,12 @@ int main(void)
          }
          
          //----------
-         if ((start_web_client==1)||(webstatus & (1<<CURRENTSEND))) // web_client in ping-callback gesetzt
-         {
-            webstatus &= ~(1<<CURRENTSEND);
+//        if ((start_web_client==1)||(webstatus & (1<<CURRENTSEND))) // web_client in ping-callback gesetzt
+//        if (webstatus & (1<<CURRENTSEND)) // web_client in ping-callback gesetzt
+
+         if (start_web_client==1)// start_web_client in ping-callback gesetzt
+        {
+            //webstatus &= ~(1<<CURRENTSEND);
             sec=0;
             start_web_client=2;
             web_client_attempts++;
@@ -1290,6 +1298,7 @@ int main(void)
             dtostrf(leistung,10,2,d);
             char* dd=(char*)trimwhitespace(d); // whitespace weg
             strcat(dhcpstring,dd);
+            
             lcd_gotoxy(13,1);
             lcd_puts(dd);
             
@@ -1355,20 +1364,23 @@ int main(void)
          //continue;
          
          // current-routinen
-         if (webstatus & (1<<DATAOK) )
+         if ((webstatus & (1<<DATAOK) )||(webstatus & (1<<CURRENTSEND))
          {
+            
+            webstatus &= ~(1<<CURRENTSEND);
             //lcd_clr_line(2);
             //OSZILO;
             
             // start_web_client=2;
             //strcat("pw=Pong&strom=360\0",(char*)teststring);
             
-            
             start_web_client=0; // ping wieder ermoeglichen
  
             
             // check
-            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstring,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+            char* dhcpstringsauber =trimwhitespace(dhcpstring);
+            
+            client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
 
             // Daten an strom.pl schicken
             
