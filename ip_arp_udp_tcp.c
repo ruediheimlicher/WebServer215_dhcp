@@ -25,12 +25,14 @@
 #include "net.h"
 #include "enc28j60.h"
 #include "ip_config.h"
+//#include "lcd.c"
 
 // I use them to debug stuff:
 #define LEDOFF PORTB|=(1<<PORTB1)
 #define LEDON PORTB&=~(1<<PORTB1)
 #define LEDISOFF PORTB&(1<<PORTB1)
 //
+static uint8_t etherrcount=0;
 static uint8_t macaddr[6];
 static uint8_t ipaddr[4]={0,0,0,0};
 static uint8_t seqnum=0xa; // my initial tcp sequence number
@@ -1258,7 +1260,13 @@ uint8_t www_client_internal_result_callback(uint8_t fd, uint8_t statuscode, uint
 //
 void client_browse_url(const char *urlbuf_p,char *urlbuf_varpart,const char *hoststr,void (*callback)(uint16_t,uint16_t,uint16_t),uint8_t *dstip,uint8_t *dstmac)
 {
-   if (!enc28j60linkup())return;
+   if (!enc28j60linkup())
+   {
+      etherrcount++;
+      lcd_gotoxy(16,3);
+      lcd_putint(etherrcount);
+      return;
+   }
    client_urlbuf_p=urlbuf_p;
    client_urlbuf_var=urlbuf_varpart;
    client_hoststr=hoststr;

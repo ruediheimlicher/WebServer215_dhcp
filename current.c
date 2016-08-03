@@ -23,7 +23,7 @@ volatile uint8_t                    sendWebCount=0;	// Zahler fuer Anzahl TWI-Ev
                                                       // nach denen Daten des Clients gesendet werden sollen
 
 
-volatile uint8_t messungcounter;
+volatile uint16_t messungcounter;
 
 
 #define TEST   0

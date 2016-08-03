@@ -9,6 +9,8 @@
 #ifndef defines_h
 #define defines_h
 
+#define TEST 1
+
 // set output to VCC, red LED off
 #define LEDOFF PORTB|=(1<<PORTB1)
 // set output to GND, red LED on
@@ -34,6 +36,9 @@ static char* teststring = "pw=Pong&strom0=360\0";
 
 // listen port for tcp/www:
 #define MYWWWPORT 80
+
+#define UPLOADMINUTEN 1
+
 
 
 #endif /* defines_h */

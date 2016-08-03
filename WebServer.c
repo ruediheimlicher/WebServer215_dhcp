@@ -61,7 +61,11 @@ static uint8_t mymac[6] = {0x54,0x55,0x58,0x10,0x00,0x29};
 //
 // The name of the virtual host which you want to 
 // contact at websrvip (hostname of the first portion of the URL):
+
 #define WEBSERVER_VHOST "www.ruediheimlicher.ch"
+
+#define LOCAL_VHOST "localhost/public_html"
+
 //#define WEBSERVER_VHOST "tuxgraphics.org"
 static uint8_t otherside_www_ip[4];
 // My own IP (DHCP will provide a value for it):
@@ -93,6 +97,8 @@ static uint8_t pingsrcip[4];
 static uint8_t web_client_attempts=0;
 static uint8_t web_client_sendok=0;
 static uint8_t web_client_send_err=0;
+
+static uint8_t linkuperr=0;
 
 
 
@@ -268,7 +274,7 @@ ISR(TIMER1_COMPA_vect)
       min++;
       lcd_gotoxy(0,0);
       lcd_putint(min);
-      if (min == 2)
+      if (min >= UPLOADMINUTEN)
       {
          min=0;
          if (!(webstatus & (1<<CURRENTSEND))) // noch nicht gesetzt
@@ -278,8 +284,8 @@ ISR(TIMER1_COMPA_vect)
       }
       
    }
-//   lcd_gotoxy(0,0);
-//   lcd_putint(sekundencounter);
+   lcd_gotoxy(4,0);
+   lcd_putint(sekundencounter);
 //   lcd_putc(' ');
 //   lcd_putint(min);
 
@@ -426,10 +432,10 @@ uint16_t print_webpage(uint8_t *buf)
    plen=fill_tcp_data_p(buf,plen,PSTR("\nbrowser_callback_count:\t "));
    itoa(browser_callback_count,vstr,10);
    plen=fill_tcp_data(buf,plen,vstr);
-   plen=fill_tcp_data_p(buf,plen,PSTR("\n*"));
+   plen=fill_tcp_data_p(buf,plen,PSTR("\nHost: "));
    
    plen=fill_tcp_data(buf,plen,(char*)WEBSERVER_VHOST);
-   plen=fill_tcp_data_p(buf,plen,PSTR("*"));
+   plen=fill_tcp_data_p(buf,plen,PSTR("\n"));
    
    // gw_arp_state
    plen=fill_tcp_data_p(buf,plen,PSTR("\ngw_arp_state:\t "));
@@ -439,14 +445,15 @@ uint16_t print_webpage(uint8_t *buf)
    plen=fill_tcp_data_p(buf,plen,PSTR("\tdns_state:\t "));
    itoa(dns_state,vstr,10);
    plen=fill_tcp_data(buf,plen,vstr);
+   plen=fill_tcp_data_p(buf,plen,PSTR("\n"));
    // start_web_client
-   plen=fill_tcp_data_p(buf,plen,PSTR("\tstart_web_client:\n "));
+   plen=fill_tcp_data_p(buf,plen,PSTR("start_web_client:\t "));
    itoa(start_web_client,vstr,10);
    plen=fill_tcp_data(buf,plen,vstr);
    
    // Leistung
    plen=fill_tcp_data_p(buf,plen,PSTR("\nleistung:\t "));
-   itoa(leistung,vstr,10);
+   itoa(webleistung,vstr,10);
    plen=fill_tcp_data(buf,plen,vstr);
 
    
@@ -491,7 +498,7 @@ ISR(TIMER0_COMPA_vect)
 // ******************************************
 // ******* conflict with timer2 in current
 // ******************************************
-/*
+
 
 // setup timer T2 as an interrupt generating time base.
 // * You must call once sei() in the main program
@@ -556,16 +563,8 @@ void ping_callback(uint8_t *ip)
 // the __attribute__((unused)) is a gcc compiler directive to avoid warnings about unsed variables.
 void browserresult_callback(uint16_t webstatuscode,uint16_t datapos , uint16_t len )
 {
-   lcd_gotoxy(4,3);
-   lcd_putint(web_client_attempts);
-
-   lcd_gotoxy(8,3);
-   lcd_putint(web_client_sendok);
-
    lcd_gotoxy(12,3);
-   lcd_putint(webstatuscode);
-   lcd_putc(' ');
-   lcd_putint(datapos);
+   lcd_puts("   ");
 
    browser_callback_count++;
    if (webstatuscode==200)
@@ -589,6 +588,17 @@ void browserresult_callback(uint16_t webstatuscode,uint16_t datapos , uint16_t l
        */
       web_client_send_err++;
    }
+   lcd_gotoxy(4,3);
+   lcd_putint(web_client_attempts);
+   
+   lcd_gotoxy(8,3);
+   lcd_putint(web_client_sendok);
+   
+   lcd_gotoxy(12,3);
+   lcd_putint(webstatuscode);
+//   lcd_putc(' ');
+//   lcd_putint(datapos);
+
 }
 
 // the __attribute__((unused)) is a gcc compiler directive to avoid warnings about unsed variables.
@@ -795,7 +805,8 @@ int main(void)
       packetloop_arp_icmp_tcp(buf,plen);
    }
    LEDOFF;
-   ************* End DHCP Handling *********** */
+   
+     ************* End DHCP Handling *********** */
    
    //init the web server ethernet/ip layer:
    
@@ -900,7 +911,9 @@ int main(void)
             //lcd_puts(filterstromstring);
          }
         
-         
+//         lcd_gotoxy(14,0);
+//         lcd_putint12(messungcounter); // anz Messungen seit startup
+ 
          if ((currentstatus & 0x0F) == ANZAHLWERTE)      // genuegend Werte
          {
             lcd_gotoxy(19,0);
@@ -914,8 +927,6 @@ int main(void)
             //lcd_gotoxy(0,1);
             //lcd_puts("    \0");
             
-            lcd_gotoxy(16,0);
-            lcd_putint(messungcounter); // anz Messungen seit startup
             
             paketcounter++;
             
@@ -961,12 +972,12 @@ int main(void)
             //lcd_puts(impstring);
             //lcd_putc(':');
             lcd_putint16(impulsmittelwert);
-            lcd_putc('*');
+            //lcd_putc('*');
             
             
-             lcd_gotoxy(9,1);
-             lcd_putint(sendintervallzeit);
-             lcd_putc('*');
+ //            lcd_gotoxy(8,1);
+ //            lcd_putint(sendintervallzeit);
+             //lcd_putc('*');
             
             /*
              Impulsdauer: impulsmittelwert * TIMERIMPULSDAUER (10us)
@@ -988,7 +999,7 @@ int main(void)
                
                lcd_gotoxy(0,2);
                lcd_putint12(webleistung);
-               lcd_putc('*');
+               //lcd_putc('*');
             }
             
             //     Stromzaehler
@@ -1101,14 +1112,14 @@ int main(void)
                   //lcd_putc(' ');
                   //OSZILO;
                   
-                  
-                  lcd_gotoxy(9,2);
+                  /*
+                  lcd_gotoxy(6,2);
                   lcd_putint(wattstunden/1000);
                   lcd_putc('.');
                   lcd_putint3(wattstunden);
                   lcd_putc('W');
                   lcd_putc('h');
-                  
+                  */
                   //OSZIHI;
                }
                
@@ -1231,6 +1242,7 @@ int main(void)
          {
             if (!enc28j60linkup())
             {
+               linkuperr++;
                continue; // only for dnslkup_request we have to check if the link is up.
             }
             
@@ -1274,7 +1286,7 @@ int main(void)
             //webstatus &= ~(1<<CURRENTSEND);
             sec=0;
             start_web_client=2;
-            web_client_attempts++;
+            //web_client_attempts++;
             
            
            // pingstring aufbauen
@@ -1318,6 +1330,7 @@ int main(void)
            // pingstring aufbauen end
            
             client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),pingstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
+           webstatus |= (1<<CALLBACKWAIT); // warten auf callback
 
            
            
@@ -1347,7 +1360,7 @@ int main(void)
          // current-routinen
          if ((webstatus & (1<<DATAOK))&&(webstatus & (1<<CURRENTSEND)) && (!(webstatus & (1<<CALLBACKWAIT))))
          {
-            web_client_attempts++;
+            
             webstatus &= ~(1<<CURRENTSEND);
             //lcd_clr_line(2);
             //OSZILO;
@@ -1376,12 +1389,15 @@ int main(void)
             char key3[]="&leistung=";
             strcat(dhcpstring,key3);
             
-            /*
+            
              char d[24];
-             dtostrf(leistung,10,2,d);
+            uint16_t zufall = rand() % 0x1F + 1;
+            float randomleistung =leistung+zufall;
+             dtostrf(randomleistung,10,2,d);
              char* dd=(char*)trimwhitespace(d); // whitespace weg
              strcat(dhcpstring,dd);
-             
+            
+            /*
              lcd_gotoxy(13,1);
              lcd_puts(dd);
              
@@ -1418,11 +1434,15 @@ int main(void)
             itoa(web_client_send_err,countstring,10);
             char*ee =(char*)trimwhitespace(countstring);
             strcat(dhcpstring,ee);
+            
+            // string putzen
             char* dhcpstringsauber =trimwhitespace(dhcpstring);
+            
+            
             // dhcp-string aufbauen end
 
             // check
-            
+            web_client_attempts++;
             
             client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
             webstatus |= (1<<CALLBACKWAIT); // warten auf callback
