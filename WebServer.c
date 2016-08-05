@@ -968,10 +968,10 @@ int main(void)
             
             //char impstring[12];
             //dtostrf(impulsmittelwert,8,2,impstring);
-            lcd_gotoxy(0,1);
+//            lcd_gotoxy(0,1);
             //lcd_puts(impstring);
             //lcd_putc(':');
-            lcd_putint16(impulsmittelwert);
+//            lcd_putint16(impulsmittelwert);
             //lcd_putc('*');
             
             
@@ -1214,6 +1214,8 @@ int main(void)
 #pragma mark packetloop
       // handle ping and wait for a tcp packet
       plen=enc28j60PacketReceive(BUFFER_SIZE, buf);
+      buf[BUFFER_SIZE]='\0'; // http is an ascii protocol. Make sure we have a string terminator.
+
       dat_p=packetloop_arp_icmp_tcp(buf,plen);
       if(plen==0)
       {
@@ -1274,7 +1276,7 @@ int main(void)
             }
             // don't try to use web client before
             // we have a result of dns-lookup
-            continue;
+//            continue;
          }
          
          //----------
@@ -1319,7 +1321,8 @@ int main(void)
            
            char key12[]="&othersideip=";
            strcat(pingstring,key12);
-           char otheripstr[20];
+           char* otheripstr;
+           otheripstr = trimwhitespace(othersideipstr);
            strcat(pingstring,otheripstr);
  
            char* pingstringsauber =trimwhitespace(pingstring);
@@ -1342,7 +1345,7 @@ int main(void)
          
          }
          // reset after a delay to prevent permanent bouncing
-         if (sec>10 && start_web_client==2)
+  //       if (sec>10 && start_web_client==2)
          {
             start_web_client=0;
             sec=0;
@@ -1362,6 +1365,8 @@ int main(void)
          {
             
             webstatus &= ~(1<<CURRENTSEND);
+            web_client_attempts++;
+            
             //lcd_clr_line(2);
             //OSZILO;
             
@@ -1442,7 +1447,7 @@ int main(void)
             // dhcp-string aufbauen end
 
             // check
-            web_client_attempts++;
+            
             
             client_browse_url((char*)PSTR("/cgi-bin/dhcp.pl?"),dhcpstringsauber,PSTR(WEBSERVER_VHOST),&browserresult_callback,otherside_www_ip,gwmac);
             webstatus |= (1<<CALLBACKWAIT); // warten auf callback
